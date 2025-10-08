@@ -4,8 +4,10 @@ package com.comp5348;
 // click the <icon src="AllIcons.Actions.Execute"/> icon in the gutter.
 public class Main {
     public static void main(String[] args) {
-        //TIP Press <shortcut actionId="ShowIntentionActions"/> with your caret at the highlighted text
-        // to see how IntelliJ IDEA suggests fixing it.
+
+        for (int i = 0; i < 5; i++){
+            System.out.println("Hello World!");
+        }
 
     }
 }
