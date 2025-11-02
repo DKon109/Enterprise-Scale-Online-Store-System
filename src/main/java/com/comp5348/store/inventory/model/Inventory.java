@@ -63,6 +63,7 @@ public class Inventory {
         return true;
     }
 
+
     /**
      * commit the reserved stock. Since it will proceed to delivery, it will reduce "reserved".
      * don't put it back to "available".
@@ -76,4 +77,5 @@ public class Inventory {
         //available is already reduced
         return true;
     }
+
 }
