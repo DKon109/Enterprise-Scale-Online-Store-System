@@ -1,4 +1,4 @@
-package com.comp5348.store.order.api;
+package com.comp5348.store.order.presentation.dto;
 
 import java.util.UUID;
 

@@ -19,6 +19,7 @@ public class PostgresConnectionProvider {
         this.username = username == null ? "" : username;
         this.password = password == null ? "" : password;
         loadDriver();
+        DatabaseMigrations.run(this);
     }
 
     private void loadDriver() {
@@ -36,4 +37,3 @@ public class PostgresConnectionProvider {
         return DriverManager.getConnection(jdbcUrl, username, password);
     }
 }
-

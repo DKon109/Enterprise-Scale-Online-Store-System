@@ -1,4 +1,4 @@
-package com.comp5348.store.order.api;
+package com.comp5348.store.order.presentation;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.verify;
@@ -9,6 +9,9 @@ import com.comp5348.store.order.application.service.OrderQueryService;
 import com.comp5348.store.order.application.service.OrderQueryService.OrderSnapshot;
 import com.comp5348.store.order.application.service.OrderQueryService.TimelineEvent;
 import com.comp5348.store.order.domain.model.Order;
+import com.comp5348.store.order.presentation.dto.OrderResponse;
+import com.comp5348.store.order.presentation.dto.OrderStatusResponse;
+import com.comp5348.store.order.presentation.dto.PlaceOrderRequest;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;

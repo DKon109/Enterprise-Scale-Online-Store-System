@@ -1,7 +1,10 @@
-package com.comp5348.store.order.api;
+package com.comp5348.store.order.presentation;
 
 import com.comp5348.store.order.application.service.OrderOrchestrator;
 import com.comp5348.store.order.application.service.OrderQueryService;
+import com.comp5348.store.order.presentation.dto.OrderResponse;
+import com.comp5348.store.order.presentation.dto.OrderStatusResponse;
+import com.comp5348.store.order.presentation.dto.PlaceOrderRequest;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;

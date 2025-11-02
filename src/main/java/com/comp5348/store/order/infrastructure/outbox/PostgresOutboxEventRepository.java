@@ -20,37 +20,10 @@ import java.util.UUID;
  */
 public class PostgresOutboxEventRepository implements OutboxEventRepository {
 
-    private static final String CREATE_TABLE_SQL = """
-            CREATE TABLE IF NOT EXISTS outbox_events (
-                id BIGSERIAL PRIMARY KEY,
-                aggregate_id UUID NOT NULL,
-                type TEXT NOT NULL,
-                payload TEXT NOT NULL,
-                published BOOLEAN NOT NULL DEFAULT FALSE,
-                created_at TIMESTAMPTZ NOT NULL
-            )
-            """;
-
-    private static final String CREATE_INDEX_SQL = """
-            CREATE INDEX IF NOT EXISTS idx_outbox_events_published_id
-            ON outbox_events(published, id)
-            """;
-
     private final PostgresConnectionProvider connectionProvider;
 
     public PostgresOutboxEventRepository(PostgresConnectionProvider connectionProvider) {
         this.connectionProvider = Objects.requireNonNull(connectionProvider, "connectionProvider");
-        initializeSchema();
-    }
-
-    private void initializeSchema() {
-        try (Connection connection = connectionProvider.getConnection();
-                Statement statement = connection.createStatement()) {
-            statement.executeUpdate(CREATE_TABLE_SQL);
-            statement.executeUpdate(CREATE_INDEX_SQL);
-        } catch (SQLException e) {
-            throw new IllegalStateException("Failed to initialize outbox schema", e);
-        }
     }
 
     @Override
@@ -146,4 +119,3 @@ public class PostgresOutboxEventRepository implements OutboxEventRepository {
         return new OutboxEvent(id, aggregateId, type, payload, published, createdAt.toInstant());
     }
 }
-

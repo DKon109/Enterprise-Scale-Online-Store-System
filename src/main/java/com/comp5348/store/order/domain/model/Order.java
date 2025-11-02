@@ -27,6 +27,10 @@ public class Order {
     private Instant updatedAt;
 
     public Order(UUID orderId, String customerId, String itemId, int quantity) {
+        this(orderId, customerId, itemId, quantity, Status.PENDING, Instant.now(), Instant.now());
+    }
+
+    private Order(UUID orderId, String customerId, String itemId, int quantity, Status status, Instant createdAt, Instant updatedAt) {
         if (orderId == null) {
             throw new IllegalArgumentException("orderId is required");
         }
@@ -39,14 +43,23 @@ public class Order {
         if (quantity <= 0) {
             throw new IllegalArgumentException("quantity must be > 0");
         }
+        if (status == null) {
+            throw new IllegalArgumentException("status is required");
+        }
+        if (createdAt == null) {
+            throw new IllegalArgumentException("createdAt is required");
+        }
+        if (updatedAt == null) {
+            throw new IllegalArgumentException("updatedAt is required");
+        }
 
         this.orderId = orderId;
         this.customerId = customerId;
         this.itemId = itemId;
         this.quantity = quantity;
-        this.status = Status.PENDING;
-        this.createdAt = Instant.now();
-        this.updatedAt = this.createdAt;
+        this.status = status;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
     }
 
     public void markReserved() {
@@ -119,5 +132,16 @@ public class Order {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public static Order rehydrate(
+            UUID orderId,
+            String customerId,
+            String itemId,
+            int quantity,
+            Status status,
+            Instant createdAt,
+            Instant updatedAt) {
+        return new Order(orderId, customerId, itemId, quantity, status, createdAt, updatedAt);
     }
 }

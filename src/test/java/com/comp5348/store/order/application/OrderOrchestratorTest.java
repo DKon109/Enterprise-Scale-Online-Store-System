@@ -14,9 +14,9 @@ import com.comp5348.store.order.domain.repository.OrderSagaStateRepository;
 import com.comp5348.store.order.infrastructure.logging.InterServiceCallLogger;
 import com.comp5348.store.order.infrastructure.outbox.PostgresOutboxEventRepository;
 import com.comp5348.store.order.infrastructure.outbox.PersistentOutboxPublisher;
-import com.comp5348.store.order.infrastructure.persistence.InMemoryOrderEventRepository;
-import com.comp5348.store.order.infrastructure.persistence.InMemoryOrderRepository;
-import com.comp5348.store.order.infrastructure.persistence.InMemorySagaStateRepository;
+import com.comp5348.store.order.infrastructure.persistence.PostgresOrderEventRepository;
+import com.comp5348.store.order.infrastructure.persistence.PostgresOrderRepository;
+import com.comp5348.store.order.infrastructure.persistence.PostgresSagaStateRepository;
 import com.comp5348.store.order.infrastructure.persistence.PostgresConnectionProvider;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import java.io.IOException;
@@ -103,9 +103,9 @@ class OrderOrchestratorTest {
 
     private static class TestContext implements AutoCloseable {
         final EmbeddedPostgres postgres;
-        final InMemoryOrderRepository orderRepo;
-        final InMemoryOrderEventRepository eventRepo;
-        final InMemorySagaStateRepository sagaRepo;
+        final PostgresOrderRepository orderRepo;
+        final PostgresOrderEventRepository eventRepo;
+        final PostgresSagaStateRepository sagaRepo;
         final PostgresOutboxEventRepository outboxRepo;
         final RecordingInventoryPort inventory;
         final RecordingPaymentPort payments;
@@ -125,9 +125,9 @@ class OrderOrchestratorTest {
                     "postgres",
                     "postgres");
 
-            this.orderRepo = new InMemoryOrderRepository();
-            this.eventRepo = new InMemoryOrderEventRepository();
-            this.sagaRepo = new InMemorySagaStateRepository();
+            this.orderRepo = new PostgresOrderRepository(connectionProvider);
+            this.eventRepo = new PostgresOrderEventRepository(connectionProvider);
+            this.sagaRepo = new PostgresSagaStateRepository(connectionProvider);
             this.outboxRepo = new PostgresOutboxEventRepository(connectionProvider);
             this.inventory = new RecordingInventoryPort();
             this.payments = new RecordingPaymentPort();
