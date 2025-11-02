@@ -1,6 +1,5 @@
 package com.comp5348.store.order.infrastructure.config;
 
-import com.comp5348.store.order.application.event.OutboxPublisher;
 import com.comp5348.store.order.application.policy.CircuitBreaker;
 import com.comp5348.store.order.application.policy.RetryPolicy;
 import com.comp5348.store.order.application.port.InventoryServicePort;
@@ -10,18 +9,11 @@ import com.comp5348.store.order.application.port.ShippingServicePort;
 import com.comp5348.store.order.application.service.OrderQueryService;
 import com.comp5348.store.order.application.service.OrderOrchestrator;
 import com.comp5348.store.order.application.support.TransactionTemplate;
-import com.comp5348.store.order.domain.repository.OrderEventRepository;
 import com.comp5348.store.order.domain.repository.OrderRepository;
-import com.comp5348.store.order.domain.repository.OrderSagaStateRepository;
-import com.comp5348.store.order.domain.repository.OutboxEventRepository;
 import com.comp5348.store.order.infrastructure.logging.InterServiceCallLogger;
-import com.comp5348.store.order.infrastructure.outbox.PersistentOutboxPublisher;
-import com.comp5348.store.order.infrastructure.outbox.PostgresOutboxEventRepository;
 import com.comp5348.store.order.infrastructure.persistence.PostgresConnectionProvider;
 import com.comp5348.store.order.infrastructure.persistence.JdbcTransactionTemplate;
-import com.comp5348.store.order.infrastructure.persistence.PostgresOrderEventRepository;
 import com.comp5348.store.order.infrastructure.persistence.PostgresOrderRepository;
-import com.comp5348.store.order.infrastructure.persistence.PostgresSagaStateRepository;
 import com.comp5348.store.order.presentation.OrderController;
 import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
@@ -47,25 +39,7 @@ public class OrderApiConfiguration {
         return new PostgresOrderRepository(connectionProvider);
     }
 
-    @Bean
-    public OrderEventRepository orderEventRepository(PostgresConnectionProvider connectionProvider) {
-        return new PostgresOrderEventRepository(connectionProvider);
-    }
 
-    @Bean
-    public OrderSagaStateRepository orderSagaStateRepository(PostgresConnectionProvider connectionProvider) {
-        return new PostgresSagaStateRepository(connectionProvider);
-    }
-
-    @Bean
-    public OutboxEventRepository outboxEventRepository(PostgresConnectionProvider connectionProvider) {
-        return new PostgresOutboxEventRepository(connectionProvider);
-    }
-
-    @Bean
-    public OutboxPublisher outboxPublisher(OutboxEventRepository repository) {
-        return new PersistentOutboxPublisher(repository);
-    }
 
     @Bean
     public TransactionTemplate transactionTemplate(PostgresConnectionProvider connectionProvider) {
@@ -100,9 +74,6 @@ public class OrderApiConfiguration {
             TransactionTemplate transactions,
             RetryPolicy retryPolicy,
             CircuitBreaker circuitBreaker,
-            OutboxPublisher outboxPublisher,
-            OrderSagaStateRepository sagaStates,
-            OrderEventRepository events,
             InterServiceCallLogger callLogger) {
         return new OrderOrchestrator(
                 orders,
@@ -113,15 +84,12 @@ public class OrderApiConfiguration {
                 transactions,
                 retryPolicy,
                 circuitBreaker,
-                outboxPublisher,
-                sagaStates,
-                events,
                 callLogger);
     }
 
     @Bean
-    public OrderQueryService orderQueryService(OrderRepository orders, OrderEventRepository events) {
-        return new OrderQueryService(orders, events);
+    public OrderQueryService orderQueryService(OrderRepository orders) {
+        return new OrderQueryService(orders);
     }
 
     @Bean

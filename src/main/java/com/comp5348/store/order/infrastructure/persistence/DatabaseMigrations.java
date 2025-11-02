@@ -21,45 +21,6 @@ final class DatabaseMigrations {
                 created_at TIMESTAMPTZ NOT NULL,
                 updated_at TIMESTAMPTZ NOT NULL
             )
-            """,
-            // Timeline of significant order events
-            """
-            CREATE TABLE IF NOT EXISTS order_timeline (
-                id BIGSERIAL PRIMARY KEY,
-                order_id UUID NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
-                event_type TEXT NOT NULL,
-                payload JSONB NOT NULL DEFAULT '{}'::jsonb,
-                occurred_at TIMESTAMPTZ NOT NULL
-            )
-            """,
-            """
-            CREATE INDEX IF NOT EXISTS idx_order_timeline_order_id_occurred_at
-            ON order_timeline(order_id, occurred_at)
-            """,
-            // Saga coordination state
-            """
-            CREATE TABLE IF NOT EXISTS order_saga_states (
-                order_id UUID PRIMARY KEY REFERENCES orders(order_id) ON DELETE CASCADE,
-                step TEXT NOT NULL,
-                retries INTEGER NOT NULL DEFAULT 0,
-                last_error TEXT,
-                updated_at TIMESTAMPTZ NOT NULL
-            )
-            """,
-            // Outbox for reliable event publication
-            """
-            CREATE TABLE IF NOT EXISTS outbox_events (
-                id BIGSERIAL PRIMARY KEY,
-                aggregate_id UUID NOT NULL,
-                type TEXT NOT NULL,
-                payload TEXT NOT NULL,
-                published BOOLEAN NOT NULL DEFAULT FALSE,
-                created_at TIMESTAMPTZ NOT NULL
-            )
-            """,
-            """
-            CREATE INDEX IF NOT EXISTS idx_outbox_events_published_id
-            ON outbox_events(published, id)
             """
     };
 

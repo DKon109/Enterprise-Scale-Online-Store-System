@@ -5,9 +5,7 @@ import com.comp5348.store.order.application.service.OrderQueryService;
 import com.comp5348.store.order.presentation.dto.OrderResponse;
 import com.comp5348.store.order.presentation.dto.OrderStatusResponse;
 import com.comp5348.store.order.presentation.dto.PlaceOrderRequest;
-import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 public class OrderController {
 
@@ -27,10 +25,7 @@ public class OrderController {
 
     public OrderStatusResponse getOrder(UUID orderId) {
         var snapshot = queries.getById(orderId);
-        List<OrderStatusResponse.TimelineEntry> entries = snapshot.timeline().stream()
-                .map(event -> new OrderStatusResponse.TimelineEntry(event.event(), event.at(), event.payload()))
-                .collect(Collectors.toList());
-        return new OrderStatusResponse(snapshot.orderId(), snapshot.status().name(), entries);
+        return new OrderStatusResponse(snapshot.orderId(), snapshot.status().name());
     }
 
     public OrderResponse cancelOrder(UUID orderId, String correlationId) {

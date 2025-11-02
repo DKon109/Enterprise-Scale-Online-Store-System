@@ -1,7 +1,5 @@
 package com.comp5348.store.order.application.service;
 
-import com.comp5348.store.order.application.event.IntegrationEvents;
-import com.comp5348.store.order.application.event.OutboxPublisher;
 import com.comp5348.store.order.application.policy.CircuitBreaker;
 import com.comp5348.store.order.application.policy.CircuitBreakerOpenException;
 import com.comp5348.store.order.application.policy.RetryPolicy;
@@ -13,14 +11,9 @@ import com.comp5348.store.order.application.support.TransactionTemplate;
 import com.comp5348.store.order.application.util.IdempotencyKeyGenerator;
 import com.comp5348.store.order.domain.model.Money;
 import com.comp5348.store.order.domain.model.Order;
-import com.comp5348.store.order.domain.model.OrderSagaState;
-import com.comp5348.store.order.domain.model.OrderTimelineEntry;
-import com.comp5348.store.order.domain.repository.OrderEventRepository;
 import com.comp5348.store.order.domain.repository.OrderRepository;
-import com.comp5348.store.order.domain.repository.OrderSagaStateRepository;
 import com.comp5348.store.order.infrastructure.logging.InterServiceCallLogger;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,9 +36,6 @@ public class OrderOrchestrator {
     private final TransactionTemplate transactions;
     private final RetryPolicy retryPolicy;
     private final CircuitBreaker circuitBreaker;
-    private final OutboxPublisher outboxPublisher;
-    private final OrderSagaStateRepository sagaStates;
-    private final OrderEventRepository events;
     private final InterServiceCallLogger callLogger;
 
     public OrderOrchestrator(
@@ -57,9 +47,6 @@ public class OrderOrchestrator {
             TransactionTemplate transactions,
             RetryPolicy retryPolicy,
             CircuitBreaker circuitBreaker,
-            OutboxPublisher outboxPublisher,
-            OrderSagaStateRepository sagaStates,
-            OrderEventRepository events,
             InterServiceCallLogger callLogger) {
         this.orders = Objects.requireNonNull(orders, "orders");
         this.inventory = Objects.requireNonNull(inventory, "inventory");
@@ -69,9 +56,6 @@ public class OrderOrchestrator {
         this.transactions = Objects.requireNonNull(transactions, "transactions");
         this.retryPolicy = retryPolicy == null ? RetryPolicy.exponential(DEFAULT_BACKOFF) : retryPolicy;
         this.circuitBreaker = Objects.requireNonNull(circuitBreaker, "circuitBreaker");
-        this.outboxPublisher = Objects.requireNonNull(outboxPublisher, "outboxPublisher");
-        this.sagaStates = Objects.requireNonNull(sagaStates, "sagaStates");
-        this.events = Objects.requireNonNull(events, "events");
         this.callLogger = callLogger == null ? InterServiceCallLogger.noop() : callLogger;
     }
 
@@ -85,9 +69,6 @@ public class OrderOrchestrator {
 
         transactions.execute(() -> {
             orders.save(order);
-            outboxPublisher.append(IntegrationEvents.orderPlaced(orderId, customerId, itemId, quantity));
-            persistSaga(orderId, "RESERVING_STOCK");
-            recordEvent(orderId, "OrderPlaced", Map.of("qty", quantity, "itemId", itemId));
         });
 
         List<InventoryServicePort.Allocation> allocations;
@@ -112,12 +93,8 @@ public class OrderOrchestrator {
         }
 
         order.markReserved();
-        int allocationCount = allocations.size();
         transactions.execute(() -> {
             orders.save(order);
-            outboxPublisher.append(IntegrationEvents.orderStatusChanged(orderId, order.getStatus().name()));
-            persistSaga(orderId, "AUTHORIZING_PAYMENT");
-            recordEvent(orderId, "StockReserved", Map.of("allocations", allocationCount));
         });
 
         Money totalAmount = Money.of(quantity);
@@ -139,9 +116,6 @@ public class OrderOrchestrator {
         order.markPaid();
         transactions.execute(() -> {
             orders.save(order);
-            outboxPublisher.append(IntegrationEvents.orderStatusChanged(orderId, order.getStatus().name()));
-            persistSaga(orderId, "REQUESTING_SHIPMENT");
-            recordEvent(orderId, "PaymentAuthorized", Map.of("amount", totalAmount.toString()));
         });
 
         ShippingServicePort.ShipmentResult shipmentResult;
@@ -163,14 +137,8 @@ public class OrderOrchestrator {
         }
 
         order.markShipmentRequested();
-        Map<String, Object> shipmentPayload = shipmentResult.trackingId() == null
-                ? Map.of()
-                : Map.of("trackingId", shipmentResult.trackingId());
         transactions.execute(() -> {
             orders.save(order);
-            outboxPublisher.append(IntegrationEvents.orderStatusChanged(orderId, order.getStatus().name()));
-            persistSaga(orderId, "WAITING_FOR_DELIVERY");
-            recordEvent(orderId, "ShipmentRequested", shipmentPayload);
         });
 
         return orderId;
@@ -181,9 +149,6 @@ public class OrderOrchestrator {
         transactions.execute(() -> {
             order.markDelivered();
             orders.save(order);
-            outboxPublisher.append(IntegrationEvents.orderStatusChanged(orderId, order.getStatus().name()));
-            recordEvent(orderId, "Delivered", Map.of());
-            sagaStates.delete(orderId);
         });
     }
 
@@ -205,25 +170,13 @@ public class OrderOrchestrator {
         transactions.execute(() -> {
             order.cancel();
             orders.save(order);
-            outboxPublisher.append(IntegrationEvents.orderStatusChanged(order.getOrderId(), order.getStatus().name()));
-            recordEvent(order.getOrderId(), "OrderCancelled", Map.of());
-            sagaStates.delete(order.getOrderId());
         });
     }
 
     private void handleReservationFailure(Order order, String displayReason, String detailedReason) {
-        Map<String, Object> eventPayload = displayReason == null ? Map.of() : Map.of("reason", displayReason);
         transactions.execute(() -> {
             order.cancel();
             orders.save(order);
-            outboxPublisher.append(IntegrationEvents.orderStatusChanged(order.getOrderId(), order.getStatus().name()));
-            recordEvent(order.getOrderId(), "StockReservationFailed", eventPayload);
-            sagaStates.save(new OrderSagaState(
-                    order.getOrderId(),
-                    "TERMINAL_FAILED_RESERVATION",
-                    0,
-                    detailedReason,
-                    Instant.now()));
         });
 
         Map<String, String> notificationPayload = new HashMap<>();
@@ -239,14 +192,10 @@ public class OrderOrchestrator {
 
     private void handlePaymentFailure(Order order, String reason, String correlationId) {
         invokeAndLog("ReleaseStock", order.getOrderId(), correlationId, () -> inventory.release(order.getOrderId()));
-        Map<String, Object> eventPayload = reason == null ? Map.of() : Map.of("reason", reason);
 
         transactions.execute(() -> {
             order.cancel();
             orders.save(order);
-            outboxPublisher.append(IntegrationEvents.orderStatusChanged(order.getOrderId(), order.getStatus().name()));
-            recordEvent(order.getOrderId(), "PaymentFailed", eventPayload);
-            sagaStates.delete(order.getOrderId());
         });
 
         notifications.send(order.getOrderId(), "PAYMENT_FAILED", notificationPayload(reason));
@@ -255,14 +204,10 @@ public class OrderOrchestrator {
     private void handleShipmentFailure(Order order, String reason, String correlationId) {
         invokeAndLog("RefundPayment", order.getOrderId(), correlationId, () -> payments.refund(order.getOrderId()));
         invokeAndLog("ReleaseStock", order.getOrderId(), correlationId, () -> inventory.release(order.getOrderId()));
-        Map<String, Object> eventPayload = reason == null ? Map.of() : Map.of("reason", reason);
 
         transactions.execute(() -> {
             order.cancel();
             orders.save(order);
-            outboxPublisher.append(IntegrationEvents.orderStatusChanged(order.getOrderId(), order.getStatus().name()));
-            recordEvent(order.getOrderId(), "ShipmentFailed", eventPayload);
-            sagaStates.delete(order.getOrderId());
         });
 
         notifications.send(order.getOrderId(), "SHIPMENT_FAILED", notificationPayload(reason));
@@ -273,22 +218,6 @@ public class OrderOrchestrator {
             return Map.of();
         }
         return Map.of("reason", reason);
-    }
-
-    private void persistSaga(UUID orderId, String step) {
-        sagaStates.save(new OrderSagaState(orderId, step, 0, null, Instant.now()));
-    }
-
-    private void recordEvent(UUID orderId, String event, Map<String, ?> payload) {
-        Map<String, Object> safePayload = new HashMap<>();
-        if (payload != null) {
-            payload.forEach((key, value) -> {
-                if (value != null) {
-                    safePayload.put(key, value);
-                }
-            });
-        }
-        events.record(new OrderTimelineEntry(orderId, event, safePayload, Instant.now()));
     }
 
     private <T> T executeWithRetryAndLogging(
