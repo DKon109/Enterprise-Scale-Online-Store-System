@@ -10,8 +10,10 @@ repositories {
 }
 
 dependencies {
+    implementation 'org.postgresql:postgresql:42.7.3'
     testImplementation platform('org.junit:junit-bom:5.10.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'io.zonky.test:embedded-postgres:2.0.5'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
