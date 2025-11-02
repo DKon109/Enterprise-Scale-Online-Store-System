@@ -7,13 +7,15 @@ import com.comp5348.store.order.application.port.InventoryServicePort;
 import com.comp5348.store.order.application.port.NotificationServicePort;
 import com.comp5348.store.order.application.port.PaymentServicePort;
 import com.comp5348.store.order.application.port.ShippingServicePort;
-import com.comp5348.store.order.application.service.OrderOrchestrator;
 import com.comp5348.store.order.application.service.OrderQueryService;
+import com.comp5348.store.order.application.service.OrderOrchestrator;
+import com.comp5348.store.order.application.support.TransactionTemplate;
 import com.comp5348.store.order.domain.model.Order;
 import com.comp5348.store.order.domain.repository.OrderSagaStateRepository;
 import com.comp5348.store.order.infrastructure.logging.InterServiceCallLogger;
 import com.comp5348.store.order.infrastructure.outbox.PostgresOutboxEventRepository;
 import com.comp5348.store.order.infrastructure.outbox.PersistentOutboxPublisher;
+import com.comp5348.store.order.infrastructure.persistence.JdbcTransactionTemplate;
 import com.comp5348.store.order.infrastructure.persistence.PostgresOrderEventRepository;
 import com.comp5348.store.order.infrastructure.persistence.PostgresOrderRepository;
 import com.comp5348.store.order.infrastructure.persistence.PostgresSagaStateRepository;
@@ -71,6 +73,41 @@ class OrderOrchestratorTest {
     }
 
     @Test
+    void stockReservationFailureCancelsOrderAndFinalizesSaga() {
+        try (TestContext ctx = TestContext.happyPath()) {
+            ctx.inventory.failReservation = true;
+            ctx.inventory.failureReason = "OUT_OF_STOCK";
+
+            UUID orderId = ctx.orchestrator.placeOrder("customer-1", "SKU-1", 2, "corr-stock-fail");
+
+            Order order = ctx.orderRepo.getRequired(orderId);
+            assertEquals(Order.Status.CANCELLED, order.getStatus());
+            assertEquals(0, ctx.inventory.releaseCalls, "release should not be called when reservation fails");
+            assertEquals(0, ctx.payments.authorizeCalls, "payment should not be attempted after stock failure");
+            assertEquals(4, ctx.inventory.reserveCalls, "should exhaust all retry attempts");
+
+            var timeline = ctx.eventRepo.findByOrderId(orderId);
+            assertEquals(2, timeline.size());
+            assertEquals("OrderPlaced", timeline.get(0).getEventType());
+            assertEquals("StockReservationFailed", timeline.get(1).getEventType());
+            assertEquals("OUT_OF_STOCK", timeline.get(1).getPayload().get("reason"));
+
+            var sagaState = ctx.sagaRepo.findById(orderId);
+            assertTrue(sagaState.isPresent(), "saga should persist terminal state on failure");
+            assertEquals("TERMINAL_FAILED_RESERVATION", sagaState.get().getStep());
+            assertTrue(sagaState.get().getLastError().contains("OUT_OF_STOCK"));
+
+            assertEquals(1, ctx.notifications.sent.size());
+            assertEquals("OUT_OF_STOCK", ctx.notifications.sent.get(0).template());
+
+            var outboxEvents = ctx.outboxRepo.findUnpublished(10);
+            assertEquals(2, outboxEvents.size());
+            assertEquals("OrderStatusChanged", outboxEvents.get(1).getType());
+            assertTrue(outboxEvents.get(1).getPayload().contains("\"status\":\"CANCELLED\""));
+        }
+    }
+
+    @Test
     void cancelBeforeShipmentTriggersRefundAndRelease() {
         try (TestContext ctx = TestContext.happyPath()) {
             UUID orderId = UUID.randomUUID();
@@ -111,6 +148,7 @@ class OrderOrchestratorTest {
         final RecordingPaymentPort payments;
         final RecordingShippingPort shipping;
         final RecordingNotificationPort notifications;
+        final TransactionTemplate transactions;
         final RetryPolicy retryPolicy;
         final CircuitBreaker circuitBreaker;
         final OutboxPublisher outboxPublisher;
@@ -133,6 +171,7 @@ class OrderOrchestratorTest {
             this.payments = new RecordingPaymentPort();
             this.shipping = new RecordingShippingPort();
             this.notifications = new RecordingNotificationPort();
+            this.transactions = new JdbcTransactionTemplate(connectionProvider);
             this.retryPolicy = new RetryPolicy(
                     new Duration[]{Duration.ZERO, Duration.ZERO, Duration.ZERO},
                     RetryPolicy.Sleeper.NOOP);
@@ -144,6 +183,7 @@ class OrderOrchestratorTest {
                     payments,
                     shipping,
                     notifications,
+                    transactions,
                     retryPolicy,
                     circuitBreaker,
                     outboxPublisher,
@@ -179,10 +219,19 @@ class OrderOrchestratorTest {
     private static class RecordingInventoryPort implements InventoryServicePort {
         int reserveCalls = 0;
         int releaseCalls = 0;
+        boolean failReservation = false;
+        String failureReason = "UNAVAILABLE";
+        RuntimeException exceptionOnReserve;
 
         @Override
         public ReserveResult reserve(UUID orderId, String itemId, int quantity) {
             reserveCalls++;
+            if (exceptionOnReserve != null) {
+                throw exceptionOnReserve;
+            }
+            if (failReservation) {
+                return ReserveResult.failure(failureReason);
+            }
             return ReserveResult.success(List.of(new Allocation("WH-1", quantity)));
         }
 

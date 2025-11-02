@@ -9,6 +9,7 @@ import com.comp5348.store.order.application.port.InventoryServicePort;
 import com.comp5348.store.order.application.port.NotificationServicePort;
 import com.comp5348.store.order.application.port.PaymentServicePort;
 import com.comp5348.store.order.application.port.ShippingServicePort;
+import com.comp5348.store.order.application.support.TransactionTemplate;
 import com.comp5348.store.order.application.util.IdempotencyKeyGenerator;
 import com.comp5348.store.order.domain.model.Money;
 import com.comp5348.store.order.domain.model.Order;
@@ -20,6 +21,8 @@ import com.comp5348.store.order.domain.repository.OrderSagaStateRepository;
 import com.comp5348.store.order.infrastructure.logging.InterServiceCallLogger;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -37,6 +40,7 @@ public class OrderOrchestrator {
     private final PaymentServicePort payments;
     private final ShippingServicePort shipping;
     private final NotificationServicePort notifications;
+    private final TransactionTemplate transactions;
     private final RetryPolicy retryPolicy;
     private final CircuitBreaker circuitBreaker;
     private final OutboxPublisher outboxPublisher;
@@ -50,6 +54,7 @@ public class OrderOrchestrator {
             PaymentServicePort payments,
             ShippingServicePort shipping,
             NotificationServicePort notifications,
+            TransactionTemplate transactions,
             RetryPolicy retryPolicy,
             CircuitBreaker circuitBreaker,
             OutboxPublisher outboxPublisher,
@@ -61,6 +66,7 @@ public class OrderOrchestrator {
         this.payments = Objects.requireNonNull(payments, "payments");
         this.shipping = Objects.requireNonNull(shipping, "shipping");
         this.notifications = Objects.requireNonNull(notifications, "notifications");
+        this.transactions = Objects.requireNonNull(transactions, "transactions");
         this.retryPolicy = retryPolicy == null ? RetryPolicy.exponential(DEFAULT_BACKOFF) : retryPolicy;
         this.circuitBreaker = Objects.requireNonNull(circuitBreaker, "circuitBreaker");
         this.outboxPublisher = Objects.requireNonNull(outboxPublisher, "outboxPublisher");
@@ -77,29 +83,42 @@ public class OrderOrchestrator {
         UUID orderId = UUID.randomUUID();
         Order order = new Order(orderId, customerId, itemId, quantity);
 
-        orders.save(order);
-        outboxPublisher.append(IntegrationEvents.orderPlaced(orderId, customerId, itemId, quantity));
-        persistSaga(orderId, "RESERVING_STOCK");
-        recordEvent(orderId, "OrderPlaced", Map.of("qty", quantity, "itemId", itemId));
+        transactions.execute(() -> {
+            orders.save(order);
+            outboxPublisher.append(IntegrationEvents.orderPlaced(orderId, customerId, itemId, quantity));
+            persistSaga(orderId, "RESERVING_STOCK");
+            recordEvent(orderId, "OrderPlaced", Map.of("qty", quantity, "itemId", itemId));
+        });
 
-        var allocations = executeWithRetryAndLogging(
-                "ReserveStock",
-                orderId,
-                correlationId,
-                () -> {
-                    InventoryServicePort.ReserveResult result = inventory.reserve(orderId, itemId, quantity);
-                    if (!result.isSuccess()) {
-                        throw new IllegalStateException("Stock reservation failed: " + result.reason());
-                    }
-                    return result.allocations();
-                },
-                "Stock reservation failed after retries");
+        List<InventoryServicePort.Allocation> allocations;
+        try {
+            allocations = executeWithRetryAndLogging(
+                    "ReserveStock",
+                    orderId,
+                    correlationId,
+                    () -> {
+                        InventoryServicePort.ReserveResult result = inventory.reserve(orderId, itemId, quantity);
+                        if (!result.isSuccess()) {
+                            throw new IllegalStateException("Stock reservation failed: " + result.reason());
+                        }
+                        return result.allocations();
+                    },
+                    "Stock reservation failed after retries");
+        } catch (IllegalStateException reserveFailure) {
+            String detailedReason = extractFailureReason(reserveFailure);
+            String displayReason = normaliseReservationReason(detailedReason);
+            handleReservationFailure(order, displayReason, detailedReason);
+            return orderId;
+        }
 
         order.markReserved();
-        orders.save(order);
-        outboxPublisher.append(IntegrationEvents.orderStatusChanged(orderId, order.getStatus().name()));
-        recordEvent(orderId, "StockReserved", Map.of("allocations", allocations.size()));
-        persistSaga(orderId, "AUTHORIZING_PAYMENT");
+        int allocationCount = allocations.size();
+        transactions.execute(() -> {
+            orders.save(order);
+            outboxPublisher.append(IntegrationEvents.orderStatusChanged(orderId, order.getStatus().name()));
+            persistSaga(orderId, "AUTHORIZING_PAYMENT");
+            recordEvent(orderId, "StockReserved", Map.of("allocations", allocationCount));
+        });
 
         Money totalAmount = Money.of(quantity);
         String idempotencyKey = IdempotencyKeyGenerator.forOrder(orderId);
@@ -118,17 +137,25 @@ public class OrderOrchestrator {
         }
 
         order.markPaid();
-        orders.save(order);
-        outboxPublisher.append(IntegrationEvents.orderStatusChanged(orderId, order.getStatus().name()));
-        recordEvent(orderId, "PaymentAuthorized", Map.of("amount", totalAmount.toString()));
-        persistSaga(orderId, "REQUESTING_SHIPMENT");
+        transactions.execute(() -> {
+            orders.save(order);
+            outboxPublisher.append(IntegrationEvents.orderStatusChanged(orderId, order.getStatus().name()));
+            persistSaga(orderId, "REQUESTING_SHIPMENT");
+            recordEvent(orderId, "PaymentAuthorized", Map.of("amount", totalAmount.toString()));
+        });
 
-        ShippingServicePort.ShipmentResult shipmentResult = executeWithRetryAndLogging(
-                "RequestShipment",
-                orderId,
-                correlationId,
-                () -> shipping.request(orderId, allocations),
-                "Shipment request exhausted");
+        ShippingServicePort.ShipmentResult shipmentResult;
+        try {
+            shipmentResult = executeWithRetryAndLogging(
+                    "RequestShipment",
+                    orderId,
+                    correlationId,
+                    () -> shipping.request(orderId, allocations),
+                    "Shipment request exhausted");
+        } catch (IllegalStateException shippingFailure) {
+            handleShipmentFailure(order, extractFailureReason(shippingFailure), correlationId);
+            return orderId;
+        }
 
         if (!shipmentResult.isAccepted()) {
             handleShipmentFailure(order, "Shipment rejected", correlationId);
@@ -136,23 +163,28 @@ public class OrderOrchestrator {
         }
 
         order.markShipmentRequested();
-        orders.save(order);
-        outboxPublisher.append(IntegrationEvents.orderStatusChanged(orderId, order.getStatus().name()));
-        recordEvent(orderId, "ShipmentRequested", shipmentResult.trackingId() == null
+        Map<String, Object> shipmentPayload = shipmentResult.trackingId() == null
                 ? Map.of()
-                : Map.of("trackingId", shipmentResult.trackingId()));
-        persistSaga(orderId, "WAITING_FOR_DELIVERY");
+                : Map.of("trackingId", shipmentResult.trackingId());
+        transactions.execute(() -> {
+            orders.save(order);
+            outboxPublisher.append(IntegrationEvents.orderStatusChanged(orderId, order.getStatus().name()));
+            persistSaga(orderId, "WAITING_FOR_DELIVERY");
+            recordEvent(orderId, "ShipmentRequested", shipmentPayload);
+        });
 
         return orderId;
     }
 
     public void markDelivered(UUID orderId) {
         Order order = orders.getRequired(orderId);
-        order.markDelivered();
-        orders.save(order);
-        outboxPublisher.append(IntegrationEvents.orderStatusChanged(orderId, order.getStatus().name()));
-        recordEvent(orderId, "Delivered", Map.of());
-        sagaStates.delete(orderId);
+        transactions.execute(() -> {
+            order.markDelivered();
+            orders.save(order);
+            outboxPublisher.append(IntegrationEvents.orderStatusChanged(orderId, order.getStatus().name()));
+            recordEvent(orderId, "Delivered", Map.of());
+            sagaStates.delete(orderId);
+        });
     }
 
     public void cancel(UUID orderId) {
@@ -170,32 +202,77 @@ public class OrderOrchestrator {
         }
         invokeAndLog("ReleaseStock", orderId, correlationId, () -> inventory.release(orderId));
 
-        order.cancel();
-        orders.save(order);
-        outboxPublisher.append(IntegrationEvents.orderStatusChanged(order.getOrderId(), order.getStatus().name()));
-        recordEvent(order.getOrderId(), "OrderCancelled", Map.of());
-        sagaStates.delete(order.getOrderId());
+        transactions.execute(() -> {
+            order.cancel();
+            orders.save(order);
+            outboxPublisher.append(IntegrationEvents.orderStatusChanged(order.getOrderId(), order.getStatus().name()));
+            recordEvent(order.getOrderId(), "OrderCancelled", Map.of());
+            sagaStates.delete(order.getOrderId());
+        });
+    }
+
+    private void handleReservationFailure(Order order, String displayReason, String detailedReason) {
+        Map<String, Object> eventPayload = displayReason == null ? Map.of() : Map.of("reason", displayReason);
+        transactions.execute(() -> {
+            order.cancel();
+            orders.save(order);
+            outboxPublisher.append(IntegrationEvents.orderStatusChanged(order.getOrderId(), order.getStatus().name()));
+            recordEvent(order.getOrderId(), "StockReservationFailed", eventPayload);
+            sagaStates.save(new OrderSagaState(
+                    order.getOrderId(),
+                    "TERMINAL_FAILED_RESERVATION",
+                    0,
+                    detailedReason,
+                    Instant.now()));
+        });
+
+        Map<String, String> notificationPayload = new HashMap<>();
+        notificationPayload.put("itemId", order.getItemId());
+        if (displayReason != null && !displayReason.isBlank()) {
+            notificationPayload.put("reason", displayReason);
+        }
+        String template = (displayReason == null || displayReason.isBlank())
+                ? "STOCK_RESERVATION_FAILED"
+                : displayReason;
+        notifications.send(order.getOrderId(), template, notificationPayload);
     }
 
     private void handlePaymentFailure(Order order, String reason, String correlationId) {
         invokeAndLog("ReleaseStock", order.getOrderId(), correlationId, () -> inventory.release(order.getOrderId()));
-        order.cancel();
-        orders.save(order);
-        outboxPublisher.append(IntegrationEvents.orderStatusChanged(order.getOrderId(), order.getStatus().name()));
-        recordEvent(order.getOrderId(), "PaymentFailed", Map.of("reason", reason));
-        notifications.send(order.getOrderId(), "PAYMENT_FAILED", Map.of("reason", reason));
-        sagaStates.delete(order.getOrderId());
+        Map<String, Object> eventPayload = reason == null ? Map.of() : Map.of("reason", reason);
+
+        transactions.execute(() -> {
+            order.cancel();
+            orders.save(order);
+            outboxPublisher.append(IntegrationEvents.orderStatusChanged(order.getOrderId(), order.getStatus().name()));
+            recordEvent(order.getOrderId(), "PaymentFailed", eventPayload);
+            sagaStates.delete(order.getOrderId());
+        });
+
+        notifications.send(order.getOrderId(), "PAYMENT_FAILED", notificationPayload(reason));
     }
 
     private void handleShipmentFailure(Order order, String reason, String correlationId) {
         invokeAndLog("RefundPayment", order.getOrderId(), correlationId, () -> payments.refund(order.getOrderId()));
         invokeAndLog("ReleaseStock", order.getOrderId(), correlationId, () -> inventory.release(order.getOrderId()));
-        order.cancel();
-        orders.save(order);
-        outboxPublisher.append(IntegrationEvents.orderStatusChanged(order.getOrderId(), order.getStatus().name()));
-        recordEvent(order.getOrderId(), "ShipmentFailed", Map.of("reason", reason));
-        notifications.send(order.getOrderId(), "SHIPMENT_FAILED", Map.of("reason", reason));
-        sagaStates.delete(order.getOrderId());
+        Map<String, Object> eventPayload = reason == null ? Map.of() : Map.of("reason", reason);
+
+        transactions.execute(() -> {
+            order.cancel();
+            orders.save(order);
+            outboxPublisher.append(IntegrationEvents.orderStatusChanged(order.getOrderId(), order.getStatus().name()));
+            recordEvent(order.getOrderId(), "ShipmentFailed", eventPayload);
+            sagaStates.delete(order.getOrderId());
+        });
+
+        notifications.send(order.getOrderId(), "SHIPMENT_FAILED", notificationPayload(reason));
+    }
+
+    private Map<String, String> notificationPayload(String reason) {
+        if (reason == null || reason.isBlank()) {
+            return Map.of();
+        }
+        return Map.of("reason", reason);
     }
 
     private void persistSaga(UUID orderId, String step) {
@@ -203,7 +280,7 @@ public class OrderOrchestrator {
     }
 
     private void recordEvent(UUID orderId, String event, Map<String, ?> payload) {
-        Map<String, Object> safePayload = new java.util.HashMap<>();
+        Map<String, Object> safePayload = new HashMap<>();
         if (payload != null) {
             payload.forEach((key, value) -> {
                 if (value != null) {
@@ -262,5 +339,32 @@ public class OrderOrchestrator {
 
     private long toMillis(long startNano) {
         return (System.nanoTime() - startNano) / 1_000_000;
+    }
+
+    private String extractFailureReason(Throwable error) {
+        if (error == null) {
+            return null;
+        }
+        Throwable current = error;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current.getMessage();
+    }
+
+    private String normaliseReservationReason(String rawReason) {
+        if (rawReason == null) {
+            return null;
+        }
+        String trimmed = rawReason.trim();
+        String prefix = "Stock reservation failed:";
+        if (trimmed.startsWith(prefix)) {
+            return trimmed.substring(prefix.length()).trim();
+        }
+        int colonIndex = trimmed.lastIndexOf(':');
+        if (colonIndex != -1 && colonIndex < trimmed.length() - 1) {
+            return trimmed.substring(colonIndex + 1).trim();
+        }
+        return trimmed;
     }
 }

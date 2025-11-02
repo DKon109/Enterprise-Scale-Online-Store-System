@@ -9,6 +9,7 @@ import com.comp5348.store.order.application.port.PaymentServicePort;
 import com.comp5348.store.order.application.port.ShippingServicePort;
 import com.comp5348.store.order.application.service.OrderQueryService;
 import com.comp5348.store.order.application.service.OrderOrchestrator;
+import com.comp5348.store.order.application.support.TransactionTemplate;
 import com.comp5348.store.order.domain.repository.OrderEventRepository;
 import com.comp5348.store.order.domain.repository.OrderRepository;
 import com.comp5348.store.order.domain.repository.OrderSagaStateRepository;
@@ -17,6 +18,7 @@ import com.comp5348.store.order.infrastructure.logging.InterServiceCallLogger;
 import com.comp5348.store.order.infrastructure.outbox.PersistentOutboxPublisher;
 import com.comp5348.store.order.infrastructure.outbox.PostgresOutboxEventRepository;
 import com.comp5348.store.order.infrastructure.persistence.PostgresConnectionProvider;
+import com.comp5348.store.order.infrastructure.persistence.JdbcTransactionTemplate;
 import com.comp5348.store.order.infrastructure.persistence.PostgresOrderEventRepository;
 import com.comp5348.store.order.infrastructure.persistence.PostgresOrderRepository;
 import com.comp5348.store.order.infrastructure.persistence.PostgresSagaStateRepository;
@@ -66,6 +68,11 @@ public class OrderApiConfiguration {
     }
 
     @Bean
+    public TransactionTemplate transactionTemplate(PostgresConnectionProvider connectionProvider) {
+        return new JdbcTransactionTemplate(connectionProvider);
+    }
+
+    @Bean
     public RetryPolicy retryPolicy() {
         return RetryPolicy.exponential(
                 Duration.ofMillis(200),
@@ -90,6 +97,7 @@ public class OrderApiConfiguration {
             PaymentServicePort payments,
             ShippingServicePort shipping,
             NotificationServicePort notifications,
+            TransactionTemplate transactions,
             RetryPolicy retryPolicy,
             CircuitBreaker circuitBreaker,
             OutboxPublisher outboxPublisher,
@@ -102,6 +110,7 @@ public class OrderApiConfiguration {
                 payments,
                 shipping,
                 notifications,
+                transactions,
                 retryPolicy,
                 circuitBreaker,
                 outboxPublisher,
