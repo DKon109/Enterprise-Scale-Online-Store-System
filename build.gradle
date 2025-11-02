@@ -34,6 +34,7 @@ dependencies {
     testImplementation 'io.zonky.test:embedded-postgres:2.0.5'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+<<<<<<< HEAD
 }
 
 sourceSets {
@@ -48,6 +49,8 @@ sourceSets {
             include '**/*Test.java'
         }
     }
+=======
+>>>>>>> b152dbe (Added basic structure of paymentTransaction class. Included springboot application dependencies in gradle build file.)
 }
 
 test {
