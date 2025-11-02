@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
  * Data Transfer Object for PaymentTransaction
@@ -20,6 +21,7 @@ public class PaymentTransactionDTO {
     private String status;
     private String bankReferenceID;
     private LocalDateTime time;
+    private UUID orderID;
 
     public PaymentTransactionDTO(PaymentTransaction entity) {
         this.id = entity.getId();
@@ -27,5 +29,6 @@ public class PaymentTransactionDTO {
         this.type = entity.getType();
         this.status = entity.getStatus();
         this.bankReferenceID = entity.getBankReferenceID();
+        this.orderID = entity.getOrderID();
     }
 }
