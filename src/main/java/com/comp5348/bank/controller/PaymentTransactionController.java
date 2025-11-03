@@ -27,7 +27,7 @@ public class PaymentTransactionController {
     }
 <<<<<<< HEAD
 
-    @GetMapping("/{transactionID")
+    @GetMapping("/{transactionID}")
     public ResponseEntity<PaymentTransactionDTO> getPaymentTransaction(@PathVariable Long transactionID) {
         PaymentTransactionDTO paymentTransaction = paymentTransactionService.getPaymentTransaction(transactionID);
         return ResponseEntity.ok(paymentTransaction);
