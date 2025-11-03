@@ -1,14 +1,20 @@
 package com.comp5348.delivery.service;
+
 import com.comp5348.delivery.model.Delivery;
 import com.comp5348.delivery.repository.DeliveryRepository;
 import com.comp5348.store.order.model.Order;
 import com.comp5348.store.order.repository.OrderRepository;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+
 
 /**
  * Business Logic for managing delivery lifecycle
@@ -19,23 +25,52 @@ import java.util.UUID;
 public class DeliveryService {
     private  final DeliveryRepository deliveryRepository;
     private final OrderRepository orderRepository;
+    private final Random random = new Random();
 
     public DeliveryService(DeliveryRepository deliveryRepository, OrderRepository orderRepository) {
         this.deliveryRepository = deliveryRepository;
         this.orderRepository = orderRepository;
     }
 
+
     /**
      * Create a new delivery
      * Basically it is called after warehouse and inventory confirmation
+     * After ~5 seconds, automatically mark as DISPATCHED, with ~5% chance of being lost (CANCELLED).
      */
     @Transactional
     public Delivery createDelivery(UUID orderId, Long warehouseId, String address, String trackingNumber) {
-        Order order = orderRepository.findById(orderId).orElseThrow(() -> new IllegalArgumentException("Order not found: " +  orderId));
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new IllegalArgumentException("Order not found: " + orderId));
 
         Delivery delivery = new Delivery(order, warehouseId, address, trackingNumber);
-        return deliveryRepository.save(delivery);
+        Delivery saved = deliveryRepository.save(delivery);
+
+        //update the status automatically after 5 sec (5% failure)
+
+        Executors.newSingleThreadScheduledExecutor().schedule(() -> {
+            try {
+                Optional<Delivery> opt = deliveryRepository.findById(saved.getId());
+                if (opt.isPresent()) {
+                    Delivery d = opt.get();
+
+                    // 5% failure
+                    if (random.nextDouble() < 0.05) {
+                        d.cancel(); //fail
+                    } else {
+                        d.markDispatched(); // dispatched from the stock
+                    }
+                    deliveryRepository.save(d);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }, 5, TimeUnit.SECONDS);
+
+        return saved;
     }
+
+
 
     /** retrieve the all deliveries associated with the same order
      */
