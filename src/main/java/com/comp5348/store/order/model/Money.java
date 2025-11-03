@@ -36,6 +36,7 @@ public final class Money {
 
     /**
      * Create Money from double and currency.
+     * Converts double to BigDecimal to avoid floating-point precision issues.
      */
     public static Money of(double amount, String currency) {
         return new Money(BigDecimal.valueOf(amount), currency);
