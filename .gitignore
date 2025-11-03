@@ -48,6 +48,7 @@ bin/
 owner2-inventory/
 
 *.log
+
 ARCHITECTURE_AND_ORM.md
 ARCHITECTURE_INDEX.md
 ARCHITECTURE_README.md
@@ -56,6 +57,7 @@ COMPLETION_SUMMARY.md
 DATA_FLOW_AND_LAYERING.md
 ORM_IMPLEMENTATION_GUIDE.md
 docs/COMP5348-Group-Project-Requirements.md
+
 
 
 # IntelliJ IDEA
