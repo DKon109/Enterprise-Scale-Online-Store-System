@@ -42,6 +42,11 @@ bin/
 .DS_Store
 
 ### Logs ###
+
+*.log.idea/
+
+owner2-inventory/
+
 *.log
 ARCHITECTURE_AND_ORM.md
 ARCHITECTURE_INDEX.md

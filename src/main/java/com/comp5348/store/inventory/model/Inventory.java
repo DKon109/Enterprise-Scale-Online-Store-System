@@ -1,10 +1,22 @@
 package com.comp5348.store.inventory.model;
 
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "inventory", uniqueConstraints = @UniqueConstraint(columnNames = {"warehouse_id", "product_id"}))
 public class Inventory {
-    private Long warehouseId;
-    private Long productId;
-    private int quantityAvailable;
-    private int quantityReserved;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false) private Long warehouseId;
+    @Column(nullable = false) private Long productId;
+    @Column(nullable = false) private int quantityAvailable;
+    @Column(nullable = false) private int quantityReserved;
+
+    @Version private Integer version;
+
+    protected Inventory() {}
 
     public Inventory(Long warehouseId, Long productId, int quantityAvailable, int quantityReserved) {
         this.warehouseId = warehouseId;
