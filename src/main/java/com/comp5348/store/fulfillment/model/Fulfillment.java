@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Fulfillment aggregate: reservation --> commit/ cancel
@@ -19,8 +20,8 @@ public class Fulfillment {
     public enum Status {REQUESTED, RESERVED, COMMITTED, CANCELLED}
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private long id;
+    @Column(nullable = false, updatable = false)
+    private UUID id;
 
     @Version
     private Integer version;
@@ -78,7 +79,7 @@ public class Fulfillment {
     }
 
     //Accessors
-    public long getId() {
+    public UUID getId() {
         return id;
     }
     public Integer getVersion() {

@@ -1,6 +1,5 @@
 package com.comp5348.bank.repository;
 
-import com.comp5348.bank.dto.PaymentTransactionDTO;
 import com.comp5348.bank.model.PaymentTransaction;
 import org.springframework.data.jpa.repository.JpaRepository;
 
