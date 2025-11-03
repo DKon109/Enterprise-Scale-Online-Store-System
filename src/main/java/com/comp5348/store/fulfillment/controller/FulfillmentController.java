@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Fulfillment REST API
@@ -69,7 +70,7 @@ public class FulfillmentController {
      */
     @GetMapping
     public ResponseEntity<List<FulfillmentResponse>> listByOrder(
-            @RequestParam @NotNull @Min(1) Long orderId) {
+            @RequestParam @NotNull @Min(1) UUID orderId) {
         List<FulfillmentResponse> list = fulfillmentService.listByOrderId(orderId)
                 .stream().map(FulfillmentResponse::from).toList();
         return ResponseEntity.ok(list);
@@ -79,7 +80,7 @@ public class FulfillmentController {
      * Retrieve a single fulfillment by its ID
      */
     @GetMapping("/{id}")
-    public ResponseEntity<FulfillmentResponse> getById(@PathVariable("id") @Min(1) Long id) {
+    public ResponseEntity<FulfillmentResponse> getById(@PathVariable("id") @Min(1) UUID id) {
         List<FulfillmentResponse> found = fulfillmentService.listByOrderId(id)
                 .stream().map(FulfillmentResponse::from).toList();
         if (found.isEmpty()) {
@@ -92,7 +93,7 @@ public class FulfillmentController {
 
     /** DTO for creating/reserving fulfillment */
     public static class ReserveRequest {
-        @NotNull @Min(1) public Long orderId;
+        @NotNull @Min(1) public UUID orderId;
         @NotBlank public String address;
         @NotNull @Min(1) public Long productId;
         @Min(1) public int quantity;
@@ -102,8 +103,8 @@ public class FulfillmentController {
 
     /** DTO for response body */
     public static class FulfillmentResponse {
-        public Long id;
-        public Long orderId;
+        public UUID id;
+        public UUID orderId;
         public String address;
         public String status;
         public String reservedAt;
@@ -113,7 +114,7 @@ public class FulfillmentController {
         static FulfillmentResponse from(Fulfillment f) {
             FulfillmentResponse res = new FulfillmentResponse();
             res.id = f.getId();
-            res.orderId = f.getOrder() != null ? f.getOrder().getId() : null;
+            res.orderId = f.getOrder() != null ? f.getOrder().getOrderId() : null;
             res.address = f.getAddress();
             res.status = f.getStatus().name();
             res.reservedAt = f.getReservedAt() == null ? null : f.getReservedAt().toString();

@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Business Logic for managing delivery lifecycle
@@ -29,7 +30,7 @@ public class DeliveryService {
      * Basically it is called after warehouse and inventory confirmation
      */
     @Transactional
-    public Delivery createDelivery(Long orderId, Long warehouseId, String address, String trackingNumber) {
+    public Delivery createDelivery(UUID orderId, Long warehouseId, String address, String trackingNumber) {
         Order order = orderRepository.findById(orderId).orElseThrow(() -> new IllegalArgumentException("Order not found: " +  orderId));
 
         Delivery delivery = new Delivery(order, warehouseId, address, trackingNumber);
@@ -39,8 +40,8 @@ public class DeliveryService {
     /** retrieve the all deliveries associated with the same order
      */
     @Transactional(readOnly = true)
-    public List<Delivery> getDeliveriesByOrderId(Long orderId) {
-        return deliveryRepository.findByOrder_Id(orderId);
+    public List<Delivery> getDeliveriesByOrderId(UUID orderId) {
+        return deliveryRepository.findByOrder_OrderId(orderId);
     }
 
     /**
@@ -98,8 +99,8 @@ public class DeliveryService {
     /** Lightweight check to confirm if a delivery exists for a given order
      */
     @Transactional(readOnly = true)
-    public boolean hasDeliveryForOrder(Long orderId) {
-        return deliveryRepository.existsByOrder_Id(orderId);
+    public boolean hasDeliveryForOrder(UUID orderId) {
+        return deliveryRepository.existsByOrder_OrderId(orderId);
     }
 
 }
