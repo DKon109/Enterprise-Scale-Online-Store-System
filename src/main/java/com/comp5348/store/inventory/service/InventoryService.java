@@ -2,6 +2,8 @@ package com.comp5348.store.inventory.service;
 
 import com.comp5348.store.inventory.model.Inventory;
 import com.comp5348.store.inventory.repository.InventoryRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 
@@ -9,6 +11,7 @@ import java.util.*;
  * Manage the stock reservation, commit, and cancel.
  * This class is called in the flow of Order and Fulfillment.
  */
+@Service
 public class InventoryService {
     private final InventoryRepository invRep;
 
@@ -20,6 +23,7 @@ public class InventoryService {
         public Allocation(Long warehouseId, Long productId, int quantity) {
             this.warehouseId = warehouseId;
             this.productId = productId;
+            if (quantity <= 0) throw new IllegalArgumentException("Quantity must be greater than zero");
             this.quantity = quantity;
         }
     }
@@ -36,26 +40,34 @@ public class InventoryService {
      *  1. Get all inventories for that product.
      *  2. sort or iterate in order to make an allocation plan
      *  3. Apply reserve() method for each chosen Inventory
+     *  4. If fully allocated, persist with saveAll, else revert in-memory changes and fail
      */
 
-    public Optional<List<Allocation>> reserveProduct(Long productId, int requestedQty){
-        if (requestedQty <= 0){
+    @Transactional
+    public Optional<List<Allocation>> reserveProduct(Long productId, int requestedQty) {
+        if (productId == null || requestedQty <= 0) {
             return Optional.empty();
         }
 
-        List<Inventory> candidates = invRep.findAllByProduct(productId);
+        List<Inventory> candidates = invRep.findByProductId(productId);
+        if (candidates.isEmpty()) {
+            return Optional.empty();
+        }
+
+        //Use warehouse in descending order of available stock
+        candidates.sort(Comparator.comparingInt(Inventory::getQuantityAvailable).reversed());
 
         int remaining = requestedQty;
         List<Inventory> touched = new ArrayList<>();
         List<Allocation> plan = new ArrayList<>();
 
-        for (Inventory inv: candidates) {
+        for (Inventory inv : candidates) {
             if (remaining <= 0) break;
 
             int canTake = Math.min(inv.getQuantityAvailable(), remaining);
             if (canTake > 0) {
                 boolean ok = inv.reserve(canTake);
-                if (!ok){
+                if (!ok) {
                     //if it fails, roll back what's already reserved
                     rollbackReservation(touched, plan);
                     return Optional.empty();
@@ -66,25 +78,20 @@ public class InventoryService {
             }
         }
 
-        if (remaining > 0){
+        if (remaining > 0) {
             //if there's not enough stock, rollback
             rollbackReservation(touched, plan);
             return Optional.empty();
         }
 
-        //persist the updated inventories
-        for (Inventory inv: touched) {
-            invRep.save(inv);
-        }
-
-        return Optional.of(plan);
+        //If all allocations succeed, persist changes in batch
+        invRep.saveAll(touched);
+        return Optional.of(Collections.unmodifiableList(plan));
     }
 
     private void rollbackReservation(List<Inventory> touched, List<Allocation> plan) {
         for (int i = 0; i< touched.size(); i++){
-            Inventory inv = touched.get(i);
-            Allocation alc = plan.get(i);
-            inv.release(alc.quantity); //undo
+            touched.get(i).release(plan.get(i).quantity);
         }
     }
 
@@ -92,14 +99,19 @@ public class InventoryService {
      * After payment success and attanged the delivery, it will finalize.
      * We assume that we use same allocation list from reserveProduct.
      */
+    @Transactional
     public boolean commitReservation(List<Allocation> allocations){
+        if (allocations == null || allocations.isEmpty()) {
+            return false;
+        }
         for (Allocation a :  allocations){
-            Optional<Inventory> opt = invRep.findByWarehouseAndProduct(a.warehouseId, a.productId);
+            Optional<Inventory> opt = invRep.findByWarehouseIdAndProductId(a.warehouseId, a.productId);
             if (opt.isEmpty()) return false;
+
             Inventory inv = opt.get();
-            boolean ok = inv.commitReserved(a.quantity);
-            if (!ok) return false;
-            invRep.save(inv);
+            if (!inv.commitReserved(a.quantity)){
+                return false;
+            }
         }
         return true;
     }
@@ -107,13 +119,17 @@ public class InventoryService {
     /** Release the reservation stock in case it is refund or canceled
      * Put the quantity of reservation back to available stock
      */
+    @Transactional
     public boolean releaseReservation(List<Allocation> allocations){
+        if (allocations == null || allocations.isEmpty()) {
+            return false;
+        }
         for (Allocation a :  allocations){
-            Optional<Inventory> opt = invRep.findByWarehouseAndProduct(a.warehouseId, a.productId);
+            Optional<Inventory> opt = invRep.findByWarehouseIdAndProductId(a.warehouseId, a.productId);
             if (opt.isEmpty()) return false;
+
             Inventory inv = opt.get();
-            boolean ok = inv.release(a.quantity);
-            if (!ok) return false;
+            if (!inv.release(a.quantity)) return false;
             invRep.save(inv);
         }
         return true;
