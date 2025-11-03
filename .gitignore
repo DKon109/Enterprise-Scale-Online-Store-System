@@ -42,6 +42,31 @@ bin/
 .DS_Store
 
 ### Logs ###
+
 *.log.idea/
 
 owner2-inventory/
+
+*.log
+ARCHITECTURE_AND_ORM.md
+ARCHITECTURE_INDEX.md
+ARCHITECTURE_README.md
+ARCHITECTURE_SUMMARY.md
+COMPLETION_SUMMARY.md
+DATA_FLOW_AND_LAYERING.md
+ORM_IMPLEMENTATION_GUIDE.md
+docs/COMP5348-Group-Project-Requirements.md
+
+
+# IntelliJ IDEA
+.idea/
+
+# Gradle
+.gradle/
+docs/CHANGES_MADE.md
+docs/COMPLIANCE_TRACKING.md
+docs/IMPLEMENTATION_ROADMAP.md
+docs/NFR_SPECIFICATION.md
+docs/REQUIREMENTS_COMPLIANCE_TRACKER.md
+docs/SUMMARY.md
+
