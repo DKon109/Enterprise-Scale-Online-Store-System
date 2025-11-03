@@ -1,33 +1,23 @@
 package com.comp5348.messaging.bank;
 
-import com.comp5348.messaging.config.RabbitMQConfig;
-import com.comp5348.bank.mock.MockBankService;
-import org.json.JSONObject;
+import com.comp5348.messaging.events.EventMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
 @Component
 public class BankMessageListener {
 
-    private final MockBankService mockBankService;
+    private static final Logger log = LoggerFactory.getLogger(BankMessageListener.class);
 
-    public BankMessageListener(MockBankService mockBankService) {
-        this.mockBankService = mockBankService;
-    }
-
-    @RabbitListener(queues = RabbitMQConfig.BANK_QUEUE)
-    public void onMessage(String message) {
-        System.out.println("[BankMessageListener] Received: " + message);
-        JSONObject json = new JSONObject(message);
-
-        String type = json.optString("type", "");
-        Long orderId = json.getLong("orderId");
-        Double amount = json.getDouble("amount");
-
-        switch (type.toUpperCase()) {
-            case "CHARGE_PAYMENT" -> mockBankService.processPayment(orderId, amount);
-            case "DELIVERY_FAILED" -> mockBankService.processRefund(orderId, amount);
-            default -> System.out.println("[BankMessageListener] Unknown event: " + type);
+    @RabbitListener(queues = "bank_queue")
+    public void onMessage(EventMessage event) {
+        switch (event.getType()) {
+            case "payment.success" -> log.info("💰 [Bank] Processed payment for order {}", event.getOrderId());
+            case "payment.failed" -> log.warn("⚠️ [Bank] Payment failed for order {}", event.getOrderId());
+            case "refund.completed" -> log.info("💸 [Bank] Refunded customer for order {}", event.getOrderId());
+            default -> log.debug("🌀 [Bank] Unknown event: {}", event);
         }
     }
 }

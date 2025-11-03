@@ -1,10 +1,13 @@
 package com.comp5348.bank.mock;
 
+import lombok.Setter;
 import org.springframework.stereotype.Service;
 
+@Setter
 @Service
 public class MockBankService {
 
+    // toggle failure manually (useful for testing)
     private boolean simulateFailure = true;
 
     public void processPayment(Long orderId, Double amount) {
@@ -21,10 +24,5 @@ public class MockBankService {
             throw new RuntimeException("Bank service unavailable");
         }
         System.out.println("[MockBankService] Refund issued for order # " + orderId + " ($" + amount + ")");
-    }
-
-    // toggle failure manually (useful for testing)
-    public void setSimulateFailure(boolean simulateFailure) {
-        this.simulateFailure = simulateFailure;
     }
 }
