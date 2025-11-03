@@ -41,7 +41,7 @@ public class Order {
     private UUID orderId;
 
     @Column(nullable = false, updatable = false)
-    private String customerId;
+    private UUID customerId;
 
     @Column(nullable = false, updatable = false)
     private String itemId;
@@ -62,22 +62,15 @@ public class Order {
         // For JPA
     }
 
-    public Order(UUID orderId, String customerId, String itemId, int quantity) {
+    public Order(UUID orderId, UUID customerId, String itemId, int quantity) {
         this.orderId = Objects.requireNonNull(orderId, "orderId must not be null");
-
-        if (customerId == null || customerId.isBlank()) {
-            throw new IllegalArgumentException("customerId must not be null or blank");
-        }
-        if (itemId == null || itemId.isBlank()) {
-            throw new IllegalArgumentException("itemId must not be null or blank");
-        }
+        this.customerId = Objects.requireNonNull(customerId, "customerId must not be null");
+        this.itemId = Objects.requireNonNull(itemId, "itemId must not be null");
 
         if (quantity <= 0) {
             throw new IllegalArgumentException("quantity must be > 0");
         }
 
-        this.customerId = customerId;
-        this.itemId = itemId;
         this.quantity = quantity;
         this.status = Status.PENDING.name();
 
@@ -154,7 +147,7 @@ public class Order {
         return orderId;
     }
 
-    public String getCustomerId() {
+    public UUID getCustomerId() {
         return customerId;
     }
 
