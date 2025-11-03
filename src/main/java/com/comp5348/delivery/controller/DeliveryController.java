@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  *  Delivery REST API
@@ -42,14 +43,14 @@ public class DeliveryController{
 
         DeliveryResponse res = DeliveryResponse.from(created);
         //Location header points to a retrievable endpoint (optional enhancement)
-        return ResponseEntity.created(URI.create("/deliveries?orderId=" + created.getOrder().getId())).body(res);
+        return ResponseEntity.created(URI.create("/deliveries?orderId=" + created.getOrder().getOrderId())).body(res);
     }
 
     /**Retrieve all deliveries associated with a specific order
      */
     @GetMapping
     public ResponseEntity<List<DeliveryResponse>> listByOrder(
-            @RequestParam @NotNull @Min(1) Long orderId) {
+            @RequestParam @NotNull @Min(1) UUID orderId) {
         List<DeliveryResponse> list = deliveryService.getDeliveriesByOrderId(orderId).stream().map(DeliveryResponse::from).toList();
         return ResponseEntity.ok(list);
     }
@@ -96,7 +97,7 @@ public class DeliveryController{
      * Validation is handled by Bean Validation
      */
     public static class CreateDeliveryRequest{
-        @NotNull @Min(1) public Long orderId;
+        @NotNull @Min(1) public UUID orderId;
         @NotNull @Min(1) public Long warehouseId;
         @NotBlank public  String address;
         public String trackingNumber;
@@ -108,7 +109,7 @@ public class DeliveryController{
      */
     public static class DeliveryResponse{
         public Long id;
-        public Long orderId;
+        public UUID orderId;
         public Long warehouseId;
         public String address;
         public String status;
@@ -119,7 +120,7 @@ public class DeliveryController{
         static DeliveryResponse from(Delivery del){
             DeliveryResponse dr = new DeliveryResponse();
             dr.id = del.getId();
-            dr.orderId = (del.getOrder() != null ? del.getOrder().getId() : null);
+            dr.orderId = (del.getOrder() != null ? del.getOrder().getOrderId() : null);
             dr.warehouseId = del.getWarehouseId();
             dr.address = del.getAddress();
             dr.status = del.getStatus().name();
