@@ -1,18 +1,20 @@
 package com.comp5348.messaging.bank;
 
+import com.comp5348.bank.service.PaymentTransactionService;
 import com.comp5348.messaging.config.RabbitMQConfig;
-import com.comp5348.bank.mock.MockBankService;
 import org.json.JSONObject;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
+import java.util.UUID;
+
 @Component
 public class BankMessageListener {
 
-    private final MockBankService mockBankService;
+    private final PaymentTransactionService paymentTransactionService;
 
-    public BankMessageListener(MockBankService mockBankService) {
-        this.mockBankService = mockBankService;
+    public BankMessageListener(PaymentTransactionService paymentTransactionService) {
+        this.paymentTransactionService = paymentTransactionService;
     }
 
     @RabbitListener(queues = RabbitMQConfig.BANK_QUEUE)
@@ -21,12 +23,12 @@ public class BankMessageListener {
         JSONObject json = new JSONObject(message);
 
         String type = json.optString("type", "");
-        Long orderId = json.getLong("orderId");
+        UUID orderId = UUID.fromString(json.getString("orderId"));
         Double amount = json.getDouble("amount");
 
         switch (type.toUpperCase()) {
-            case "CHARGE_PAYMENT" -> mockBankService.processPayment(orderId, amount);
-            case "DELIVERY_FAILED" -> mockBankService.processRefund(orderId, amount);
+            case "CHARGE_PAYMENT" -> paymentTransactionService.createPurchaseTransaction(orderId, amount);
+            case "DELIVERY_FAILED" -> paymentTransactionService.createRefundTransaction(orderId, amount);
             default -> System.out.println("[BankMessageListener] Unknown event: " + type);
         }
     }
