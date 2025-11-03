@@ -1,4 +1,106 @@
 package com.comp5348.delivery.service;
+import com.comp5348.delivery.model.Delivery;
+import com.comp5348.delivery.repository.DeliveryRepository;
+import com.comp5348.store.order.model.Order;
+import com.comp5348.store.order.repository.OrderRepository;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.stereotype.Service;
 
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+/**
+ * Business Logic for managing delivery lifecycle
+ * Called from Order and Fulfilment workflows.
+ */
+
+@Service
 public class DeliveryService {
+    private  final DeliveryRepository deliveryRepository;
+    private final OrderRepository orderRepository;
+
+    public DeliveryService(DeliveryRepository deliveryRepository, OrderRepository orderRepository) {
+        this.deliveryRepository = deliveryRepository;
+        this.orderRepository = orderRepository;
+    }
+
+    /**
+     * Create a new delivery
+     * Basically it is called after warehouse and inventory confirmation
+     */
+    @Transactional
+    public Delivery createDelivery(UUID orderId, Long warehouseId, String address, String trackingNumber) {
+        Order order = orderRepository.findById(orderId).orElseThrow(() -> new IllegalArgumentException("Order not found: " +  orderId));
+
+        Delivery delivery = new Delivery(order, warehouseId, address, trackingNumber);
+        return deliveryRepository.save(delivery);
+    }
+
+    /** retrieve the all deliveries associated with the same order
+     */
+    @Transactional(readOnly = true)
+    public List<Delivery> getDeliveriesByOrderId(UUID orderId) {
+        return deliveryRepository.findByOrder_OrderId(orderId);
+    }
+
+    /**
+     * Retrieve the delivery by tracking number
+     */
+    @Transactional(readOnly = true)
+    public Optional<Delivery> getByTrackingNumber(String trackingNumber) {
+        return deliveryRepository.findByTrackingNumber(trackingNumber);
+    }
+
+    /**
+     * Update the delivery status to DISPATCHED and record timestamp
+     */
+    @Transactional
+    public boolean markDispatched(Long deliveryId) {
+        Optional<Delivery> opt = deliveryRepository.findById(deliveryId);
+        if (opt.isEmpty()) {
+            return false;
+        }
+        Delivery delivery = opt.get();
+        delivery.markDispatched();
+        deliveryRepository.save(delivery);
+        return true;
+    }
+
+    /**Update the delivery status to DELIVERED
+     */
+    @Transactional
+    public boolean markDelivered(Long deliveryId) {
+        Optional<Delivery> opt = deliveryRepository.findById(deliveryId);
+        if (opt.isEmpty()) {
+            return false;
+        }
+        Delivery delivery = opt.get();
+        delivery.markDelivered();
+        deliveryRepository.save(delivery);
+        return true;
+    }
+
+    /**
+     * Cancel an existing delivery
+     */
+    @Transactional
+    public boolean cancelDelivery(Long deliveryId) {
+        Optional<Delivery> opt = deliveryRepository.findById(deliveryId);
+        if (opt.isEmpty()) {
+            return false;
+        }
+        Delivery delivery = opt.get();
+        delivery.cancel();
+        deliveryRepository.save(delivery);
+        return true;
+    }
+
+    /** Lightweight check to confirm if a delivery exists for a given order
+     */
+    @Transactional(readOnly = true)
+    public boolean hasDeliveryForOrder(UUID orderId) {
+        return deliveryRepository.existsByOrder_OrderId(orderId);
+    }
+
 }

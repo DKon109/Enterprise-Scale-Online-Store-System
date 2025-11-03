@@ -3,6 +3,7 @@ package com.comp5348.messaging.bank;
 import com.comp5348.messaging.events.EventMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.comp5348.bank.service.PaymentTransactionService;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
@@ -10,6 +11,11 @@ import org.springframework.stereotype.Component;
 public class BankMessageListener {
 
     private static final Logger log = LoggerFactory.getLogger(BankMessageListener.class);
+    private final PaymentTransactionService paymentTransactionService;
+
+    public BankMessageListener(PaymentTransactionService paymentTransactionService) {
+        this.paymentTransactionService = paymentTransactionService;
+    }
 
     @RabbitListener(queues = "bank_queue")
     public void onMessage(EventMessage event) {

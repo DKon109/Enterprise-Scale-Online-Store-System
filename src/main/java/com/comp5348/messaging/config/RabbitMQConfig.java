@@ -31,6 +31,7 @@ public class RabbitMQConfig {
                 .build();
     }
 
+    // Dead Letter Queue (DLQ)
     @Bean
     public Queue bankQueueDlq() {
         return QueueBuilder.durable(BANK_QUEUE_DLQ).build();
