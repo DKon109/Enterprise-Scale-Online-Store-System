@@ -1,5 +1,7 @@
 package com.comp5348.delivery.repository;
+
 import com.comp5348.delivery.model.Delivery;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -11,6 +13,7 @@ import java.util.UUID;
  */
 public interface DeliveryRepository extends JpaRepository<Delivery, Long> {
     // Retrieve all deliveries associated with the same order
+    @EntityGraph(attributePaths = "order")
     List<Delivery> findByOrder_OrderId(UUID orderId);
 
     //Search the delivery by tracking number
