@@ -40,7 +40,7 @@ class FulfillmentControllerIntegrationTest {
     @Test
     void reserveEndpoint_acceptsUuidPayload() throws Exception {
         UUID orderId = UUID.randomUUID();
-        UUID fulfillmentId = UUID.randomUUID();
+        long fulfillmentId = 101L;
         Fulfillment fulfillment = new Fulfillment(new Order(orderId, UUID.randomUUID(), "SKU-INT-1", 2), "500 Integration Way");
         fulfillment.markReserved();
         ReflectionTestUtils.setField(fulfillment, "id", fulfillmentId);
@@ -59,7 +59,7 @@ class FulfillmentControllerIntegrationTest {
                                 }
                                 """.formatted(orderId)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(fulfillmentId.toString()))
+                .andExpect(jsonPath("$.id").value((int) fulfillmentId))
                 .andExpect(jsonPath("$.orderId").value(orderId.toString()));
     }
 
@@ -68,7 +68,7 @@ class FulfillmentControllerIntegrationTest {
         UUID orderId = UUID.randomUUID();
         Fulfillment fulfillment = new Fulfillment(new Order(orderId, UUID.randomUUID(), "SKU-INT-2", 1), "List Address");
         fulfillment.markReserved();
-        ReflectionTestUtils.setField(fulfillment, "id", UUID.randomUUID());
+        ReflectionTestUtils.setField(fulfillment, "id", 202L);
 
         when(fulfillmentService.listByOrderId(orderId)).thenReturn(List.of(fulfillment));
 
