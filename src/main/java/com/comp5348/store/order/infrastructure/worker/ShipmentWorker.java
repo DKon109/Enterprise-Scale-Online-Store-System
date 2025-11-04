@@ -7,6 +7,7 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
@@ -41,8 +42,9 @@ public class ShipmentWorker {
      * Process all PAID orders and request shipment.
      * 
      * This runs periodically to create a cancellation window.
-     * Default interval: 10 seconds (configurable via shipment.worker.interval)
+     * Default interval: 5 minutes (configurable via shipment.worker.interval)
      */
+    @Scheduled(fixedDelayString = "${shipment.worker.interval:300000}") // 5 minutes
     public void processShipments() {
         List<Order> paidOrders = orderRepository.findByStatus(Order.Status.PAID.name());
         
@@ -68,3 +70,4 @@ public class ShipmentWorker {
         }
     }
 }
+
