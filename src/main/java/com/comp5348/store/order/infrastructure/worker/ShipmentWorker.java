@@ -44,7 +44,7 @@ public class ShipmentWorker {
      * This runs periodically to create a cancellation window.
      * Default interval: 5 minutes (configurable via shipment.worker.interval)
      */
-    @Scheduled(fixedDelayString = "${shipment.worker.interval:300000}") // 5 minutes
+    @Scheduled(fixedDelayString = "${shipment.worker.interval:10000*10}") // 5 minutes
     public void processShipments() {
         List<Order> paidOrders = orderRepository.findByStatus(Order.Status.PAID.name());
         
