@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/customers")
@@ -39,6 +40,9 @@ public class CustomerController {
 
     @GetMapping("/me")
     public CustomerResponse currentCustomer(Principal principal) {
+        if (principal == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
+        }
         Customer customer = customerService.getByUsername(principal.getName());
         return CustomerResponse.from(customer);
     }

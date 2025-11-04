@@ -8,7 +8,12 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -36,7 +41,7 @@ public class SimplePaymentServiceAdapter implements PaymentServicePort {
     }
 
     @Override
-    public PaymentResult authorize(UUID orderId, Money amount, String idempotencyKey) {
+    public PaymentResult authorize(UUID orderId, Money amount, String idempotencyKey, String correlationId, String requestId) {
         // Check for payment failure simulation header
         if (isPaymentFailureSimulated()) {
             log.debug("Payment failure simulated for order {} (X-Simulate-Payment-Failure header present)", orderId);
@@ -54,7 +59,14 @@ public class SimplePaymentServiceAdapter implements PaymentServicePort {
                     idempotencyKey
             );
 
-            PaymentTransactionResponse response = restTemplate.postForObject(url, request, PaymentTransactionResponse.class);
+            HttpEntity<PaymentTransactionRequest> entity = new HttpEntity<>(
+                    request,
+                    buildHeaders(correlationId, resolveRequestId(requestId, idempotencyKey))
+            );
+
+            ResponseEntity<PaymentTransactionResponse> responseEntity =
+                    restTemplate.postForEntity(url, entity, PaymentTransactionResponse.class);
+            PaymentTransactionResponse response = responseEntity.getBody();
 
             if (response != null && "Confirmed".equals(response.status)) {
                 log.debug("Authorised payment for order {} amount {} with key {}", orderId, amount, idempotencyKey);
@@ -70,7 +82,7 @@ public class SimplePaymentServiceAdapter implements PaymentServicePort {
     }
 
     @Override
-    public PaymentResult refund(UUID orderId) {
+    public PaymentResult refund(UUID orderId, String correlationId, String requestId) {
         try {
             // Call Bank service to create a refund transaction
             String url = bankServiceUrl + "/transactions";
@@ -81,7 +93,17 @@ public class SimplePaymentServiceAdapter implements PaymentServicePort {
                     "refund-" + orderId
             );
 
-            PaymentTransactionResponse response = restTemplate.postForObject(url, request, PaymentTransactionResponse.class);
+            String resolvedRequestId = resolveRequestId(
+                    requestId,
+                    "refund-" + orderId);
+            HttpEntity<PaymentTransactionRequest> entity = new HttpEntity<>(
+                    request,
+                    buildHeaders(correlationId, resolvedRequestId)
+            );
+
+            ResponseEntity<PaymentTransactionResponse> responseEntity =
+                    restTemplate.postForEntity(url, entity, PaymentTransactionResponse.class);
+            PaymentTransactionResponse response = responseEntity.getBody();
 
             if (response != null && "Confirmed".equals(response.status)) {
                 log.debug("Refunded payment for order {}", orderId);
@@ -112,6 +134,25 @@ public class SimplePaymentServiceAdapter implements PaymentServicePort {
             log.debug("Could not check for payment failure simulation header", e);
         }
         return false;
+    }
+
+    private HttpHeaders buildHeaders(String correlationId, String requestId) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        if (StringUtils.hasText(correlationId)) {
+            headers.set("X-Correlation-ID", correlationId.trim());
+        }
+        if (StringUtils.hasText(requestId)) {
+            headers.set("X-Request-ID", requestId.trim());
+        }
+        return headers;
+    }
+
+    private String resolveRequestId(String candidate, String fallback) {
+        if (StringUtils.hasText(candidate)) {
+            return candidate.trim();
+        }
+        return fallback;
     }
 
     /**

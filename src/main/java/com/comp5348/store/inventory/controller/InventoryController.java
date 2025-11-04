@@ -33,8 +33,12 @@ public class InventoryController {
 
     //GET / inventory
     @GetMapping
-    public ResponseEntity<Collection<Inventory>> listAllInventory() {
-        return ResponseEntity.ok(inventoryService.viewAllInventory());
+    public ResponseEntity<List<InventoryView>> listAllInventory() {
+        List<InventoryView> body = inventoryService.viewAllInventory()
+                .stream()
+                .map(InventoryView::from)
+                .toList();
+        return ResponseEntity.ok(body);
     }
 
     // POST /inventory/add?warehouseId={warehouseId}&productId={productId}&qty={qty}
@@ -79,6 +83,28 @@ public class InventoryController {
     }
 
     //DTO
+    public static class InventoryView {
+        public Long warehouseId;
+        public Long productId;
+        public int available;
+        public int reserved;
+
+        private InventoryView(Long warehouseId, Long productId, int available, int reserved) {
+            this.warehouseId = warehouseId;
+            this.productId = productId;
+            this.available = available;
+            this.reserved = reserved;
+        }
+
+        static InventoryView from(Inventory inventory) {
+            return new InventoryView(
+                    inventory.getWarehouseId(),
+                    inventory.getProductId(),
+                    inventory.getQuantityAvailable(),
+                    inventory.getQuantityReserved());
+        }
+    }
+
     public static class AllocationDto {
         @NotNull @Min(1) public Long warehouseId;
         @NotNull @Min(1) public Long productId;
@@ -101,4 +127,3 @@ public class InventoryController {
         }
     }
 }
-

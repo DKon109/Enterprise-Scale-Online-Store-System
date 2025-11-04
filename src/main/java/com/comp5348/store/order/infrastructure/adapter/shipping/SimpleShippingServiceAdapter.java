@@ -47,8 +47,9 @@ public class SimpleShippingServiceAdapter implements ShippingServicePort {
             // Call Delivery service to create a delivery
             String url = deliveryServiceUrl + "/deliveries";
 
-            // Use first allocation's location as warehouse ID (simplified)
-            Long warehouseId = 1L;  // Default warehouse
+            Long warehouseId = (allocations != null && !allocations.isEmpty())
+                    ? allocations.get(0).warehouseId()
+                    : 1L; // Fallback warehouse for demo data
             String address = "Default Address";  // Would come from order in real scenario
             String trackingNumber = "TRACK-" + orderId.toString().substring(0, 8).toUpperCase();
 

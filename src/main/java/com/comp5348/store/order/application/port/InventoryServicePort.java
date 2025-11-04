@@ -43,5 +43,17 @@ public interface InventoryServicePort {
         }
     }
 
-    record Allocation(String locationId, int quantity) { }
+    record Allocation(Long warehouseId, Long productId, int quantity) {
+        public Allocation {
+            if (warehouseId == null) {
+                throw new IllegalArgumentException("warehouseId must not be null");
+            }
+            if (productId == null) {
+                throw new IllegalArgumentException("productId must not be null");
+            }
+            if (quantity <= 0) {
+                throw new IllegalArgumentException("quantity must be greater than zero");
+            }
+        }
+    }
 }

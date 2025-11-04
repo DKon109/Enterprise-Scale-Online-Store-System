@@ -5,9 +5,9 @@ import java.util.UUID;
 
 public interface PaymentServicePort {
 
-    PaymentResult authorize(UUID orderId, Money amount, String idempotencyKey);
+    PaymentResult authorize(UUID orderId, Money amount, String idempotencyKey, String correlationId, String requestId);
 
-    PaymentResult refund(UUID orderId);
+    PaymentResult refund(UUID orderId, String correlationId, String requestId);
 
     final class PaymentResult {
         private final boolean authorized;

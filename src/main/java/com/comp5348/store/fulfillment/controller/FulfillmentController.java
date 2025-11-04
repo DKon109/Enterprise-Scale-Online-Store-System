@@ -2,14 +2,15 @@ package com.comp5348.store.fulfillment.controller;
 
 import com.comp5348.store.fulfillment.model.Fulfillment;
 import com.comp5348.store.fulfillment.service.FulfillmentService;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.util.StringUtils;
 
 import java.net.URI;
 import java.util.List;
@@ -40,7 +41,7 @@ public class FulfillmentController {
     @PostMapping("/reserve")
     public ResponseEntity<FulfillmentResponse> reserve(@RequestBody @Valid ReserveRequest body) {
         Fulfillment created = fulfillmentService.reserve(
-                body.orderId, body.address, body.productId, body.quantity);
+                body.orderId, body.resolveAddress(), body.resolveProductId(), body.resolveQuantity());
         FulfillmentResponse res = FulfillmentResponse.from(created);
 
         // Return HTTP 201 with the location of the new resource
@@ -94,16 +95,61 @@ public class FulfillmentController {
     /** DTO for creating/reserving fulfillment */
     public static class ReserveRequest {
         @NotNull public UUID orderId;
-        @NotBlank public String address;
-        @NotNull @Min(1) public Long productId;
-        @Min(1) public int quantity;
+        public String address;
+        @Min(1) public Long productId;
+        @Min(1) public Integer quantity;
+        public List<Item> items;
 
         public ReserveRequest() {}
+
+        public String resolveAddress() {
+            if (StringUtils.hasText(address)) {
+                return address.trim();
+            }
+            return "Default Shipping Address";
+        }
+
+        public Long resolveProductId() {
+            if (productId != null && productId > 0) {
+                return productId;
+            }
+            Item first = firstItem();
+            if (first != null) {
+                return first.productId;
+            }
+            throw new IllegalArgumentException("productId is required");
+        }
+
+        public int resolveQuantity() {
+            if (quantity != null && quantity > 0) {
+                return quantity;
+            }
+            Item first = firstItem();
+            if (first != null && first.quantity > 0) {
+                return first.quantity;
+            }
+            throw new IllegalArgumentException("quantity must be greater than zero");
+        }
+
+        private Item firstItem() {
+            if (items == null || items.isEmpty()) {
+                return null;
+            }
+            return items.get(0);
+        }
+
+        @JsonIgnoreProperties(ignoreUnknown = true)
+        public static class Item {
+            @NotNull @Min(1) public Long productId;
+            @Min(1) public int quantity;
+
+            public Item() {}
+        }
     }
 
     /** DTO for response body */
     public static class FulfillmentResponse {
-        public UUID id;
+        public Long id;
         public UUID orderId;
         public String address;
         public String status;

@@ -20,8 +20,9 @@ public class Fulfillment {
     public enum Status {REQUESTED, RESERVED, COMMITTED, CANCELLED}
 
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(nullable = false, updatable = false)
-    private UUID id;
+    private Long id;
 
     @Version
     private Integer version;
@@ -79,7 +80,7 @@ public class Fulfillment {
     }
 
     //Accessors
-    public UUID getId() {
+    public Long getId() {
         return id;
     }
     public Integer getVersion() {
