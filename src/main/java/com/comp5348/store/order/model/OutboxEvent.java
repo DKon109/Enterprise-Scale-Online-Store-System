@@ -2,10 +2,14 @@ package com.comp5348.store.order.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostLoad;
 import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 import java.util.Objects;
@@ -39,6 +43,16 @@ public class OutboxEvent {
     @Column
     private LocalDateTime sentAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 32, columnDefinition = "varchar(32) default 'PENDING'")
+    private OutboxEventStatus status;
+
+    @Column
+    private LocalDateTime processedAt;
+
+    @Column(name = "last_error", length = 500)
+    private String lastError;
+
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
@@ -54,14 +68,29 @@ public class OutboxEvent {
         this.template = Objects.requireNonNull(template, "template must not be null");
         this.payload = Objects.requireNonNull(payload, "payload must not be null");
         this.sent = false;
+        this.status = OutboxEventStatus.PENDING;
         this.retryCount = 0;
         this.createdAt = LocalDateTime.now();
     }
 
     @PrePersist
-    public void prePersist() {
+    @PreUpdate
+    public void applyDefaults() {
         if (createdAt == null) {
             createdAt = LocalDateTime.now();
+        }
+        if (status == null) {
+            status = sent ? OutboxEventStatus.SENT : OutboxEventStatus.PENDING;
+        }
+        if (status == OutboxEventStatus.SENT && processedAt == null) {
+            processedAt = sentAt;
+        }
+    }
+
+    @PostLoad
+    private void onLoad() {
+        if (status == null) {
+            status = sent ? OutboxEventStatus.SENT : OutboxEventStatus.PENDING;
         }
     }
 
@@ -89,6 +118,18 @@ public class OutboxEvent {
         return sentAt;
     }
 
+    public OutboxEventStatus getStatus() {
+        return status;
+    }
+
+    public LocalDateTime getProcessedAt() {
+        return processedAt;
+    }
+
+    public String getLastError() {
+        return lastError;
+    }
+
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }
@@ -100,9 +141,19 @@ public class OutboxEvent {
     public void markSent() {
         this.sent = true;
         this.sentAt = LocalDateTime.now();
+        this.processedAt = this.sentAt;
+        this.status = OutboxEventStatus.SENT;
+        this.lastError = null;
     }
 
-    public void markAttemptFailed() {
+    public void markAttemptFailed(String reason) {
         this.retryCount += 1;
+        this.lastError = reason;
+    }
+
+    public void markFailed(String reason) {
+        this.status = OutboxEventStatus.FAILED;
+        this.processedAt = LocalDateTime.now();
+        this.lastError = reason;
     }
 }

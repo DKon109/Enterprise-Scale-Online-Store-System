@@ -1,6 +1,7 @@
 package com.comp5348.store.order.controller;
 
 import com.comp5348.store.order.model.OutboxEvent;
+import com.comp5348.store.order.model.OutboxEventStatus;
 import com.comp5348.store.order.repository.OutboxRepository;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -23,7 +24,7 @@ public class OutboxController {
 
     @GetMapping
     public List<OutboxEventResponse> listOutboxEvents() {
-        List<OutboxEvent> pending = outboxRepository.findBySentFalseOrderByCreatedAtAsc();
+        List<OutboxEvent> pending = outboxRepository.findByStatusOrderByCreatedAtAsc(OutboxEventStatus.PENDING);
         if (pending.isEmpty()) {
             pending = outboxRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
         }
@@ -43,10 +44,10 @@ public class OutboxController {
             String status,
             LocalDateTime createdAt,
             LocalDateTime processedAt,
-            int retryCount) {
+            int retryCount,
+            String lastError) {
 
         private static OutboxEventResponse from(OutboxEvent event) {
-            String derivedStatus = event.isSent() ? "PROCESSED" : "PENDING";
             return new OutboxEventResponse(
                     event.getId(),
                     event.getOrderId(),
@@ -55,10 +56,11 @@ public class OutboxController {
                     event.getSentAt(),
                     event.getPayload(),
                     event.getTemplate(),
-                    derivedStatus,
+                    event.getStatus().name(),
                     event.getCreatedAt(),
-                    event.getSentAt(),
-                    event.getRetryCount());
+                    event.getProcessedAt(),
+                    event.getRetryCount(),
+                    event.getLastError());
         }
     }
 }

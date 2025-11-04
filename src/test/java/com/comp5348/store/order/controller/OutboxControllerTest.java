@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.comp5348.store.order.model.OutboxEvent;
+import com.comp5348.store.order.model.OutboxEventStatus;
 import com.comp5348.store.order.repository.OutboxRepository;
 import java.util.List;
 import java.util.UUID;
@@ -38,7 +39,7 @@ class OutboxControllerTest {
     @Test
     void listOutboxEventsReturnsPendingEntries() throws Exception {
         OutboxEvent event = new OutboxEvent(UUID.randomUUID(), "PAYMENT_FAILED", "{\"reason\":\"Insufficient funds\"}");
-        when(outboxRepository.findBySentFalseOrderByCreatedAtAsc()).thenReturn(List.of(event));
+        when(outboxRepository.findByStatusOrderByCreatedAtAsc(OutboxEventStatus.PENDING)).thenReturn(List.of(event));
 
         mockMvc.perform(get("/outbox"))
                 .andExpect(status().isOk())
@@ -53,7 +54,7 @@ class OutboxControllerTest {
         OutboxEvent sentEvent = new OutboxEvent(UUID.randomUUID(), "SHIPMENT_FAILED", "{}");
         sentEvent.markSent();
 
-        when(outboxRepository.findBySentFalseOrderByCreatedAtAsc()).thenReturn(List.of());
+        when(outboxRepository.findByStatusOrderByCreatedAtAsc(OutboxEventStatus.PENDING)).thenReturn(List.of());
         when(outboxRepository.findAll(any(Sort.class))).thenReturn(List.of(sentEvent));
 
         mockMvc.perform(get("/outbox"))
@@ -61,6 +62,8 @@ class OutboxControllerTest {
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].template").value("SHIPMENT_FAILED"))
                 .andExpect(jsonPath("$[0].sent").value(true))
-                .andExpect(jsonPath("$[0].sentAt").isNotEmpty());
+                .andExpect(jsonPath("$[0].status").value("SENT"))
+                .andExpect(jsonPath("$[0].sentAt").isNotEmpty())
+                .andExpect(jsonPath("$[0].processedAt").isNotEmpty());
     }
 }

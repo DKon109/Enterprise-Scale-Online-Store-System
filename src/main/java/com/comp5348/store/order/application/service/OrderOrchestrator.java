@@ -103,9 +103,6 @@ public class OrderOrchestrator {
 
         transactions.execute(() -> orders.save(order));
 
-        // COMPLIANCE: §50-54 - Order Cancellation (Before Delivery Request Sent)
-        // Return immediately with PENDING order. Processing happens via separate endpoints.
-        // This allows customers to cancel before any processing begins.
         return orderId;
     }
 

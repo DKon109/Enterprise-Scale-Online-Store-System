@@ -48,6 +48,7 @@ public class WarehouseMessageListener {
             switch (event.getType()) {
                 case "item.preparing" -> handleItemPreparing(event, correlationId);
                 case "item.shipped" -> handleItemShipped(event, correlationId);
+                case "item.in_transit" -> handleItemInTransit(event, correlationId);
                 case "item.delivered" -> handleItemDelivered(event, correlationId);
                 case "shipment.requested" -> handleShipmentRequested(event, correlationId);
                 default -> log.debug("[Warehouse] Unknown event type: {} for order {}", event.getType(), event.getOrderId());
@@ -82,6 +83,14 @@ public class WarehouseMessageListener {
 
         // Optional: Update order status to SHIPPED
         // Example: orderOrchestrator.markShipped(event.getOrderId());
+    }
+
+    /**
+     * Handle in transit updates from delivery partner.
+     */
+    private void handleItemInTransit(EventMessage event, String correlationId) {
+        log.info("[Warehouse] 🚐 Item IN TRANSIT for order {} | Correlation: {}",
+            event.getOrderId(), correlationId);
     }
 
     /**

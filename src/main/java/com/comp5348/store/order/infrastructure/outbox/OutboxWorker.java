@@ -1,6 +1,7 @@
 package com.comp5348.store.order.infrastructure.outbox;
 
 import com.comp5348.store.order.model.OutboxEvent;
+import com.comp5348.store.order.model.OutboxEventStatus;
 import com.comp5348.store.order.repository.OutboxRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,21 +30,24 @@ public class OutboxWorker {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final String emailServiceUrl;
+    private final int maxRetries;
 
     public OutboxWorker(
             OutboxRepository outboxRepository,
             RestTemplate restTemplate,
             ObjectMapper objectMapper,
-            @Value("${email.service.url:http://localhost:8082}") String emailServiceUrl) {
+            @Value("${email.service.url:http://localhost:8082}") String emailServiceUrl,
+            @Value("${outbox.worker.max-retries:5}") int maxRetries) {
         this.outboxRepository = outboxRepository;
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
         this.emailServiceUrl = emailServiceUrl;
+        this.maxRetries = Math.max(1, maxRetries);
     }
 
     @Scheduled(fixedDelayString = "${outbox.worker.interval:5000}")
     public void processOutbox() {
-        List<OutboxEvent> pending = outboxRepository.findBySentFalseOrderByCreatedAtAsc();
+        List<OutboxEvent> pending = outboxRepository.findByStatusOrderByCreatedAtAsc(OutboxEventStatus.PENDING);
         if (pending.isEmpty()) {
             return;
         }
@@ -60,9 +64,23 @@ public class OutboxWorker {
                 outboxRepository.save(event);
                 log.info("Outbox event {} dispatched successfully", event.getId());
             } catch (RestClientException ex) {
-                event.markAttemptFailed();
+                String reason = ex.getMessage();
+                event.markAttemptFailed(reason);
+                if (event.getRetryCount() >= maxRetries) {
+                    event.markFailed(reason);
+                    log.error(
+                            "Outbox delivery exhausted retries (id={}, retries={}): {}",
+                            event.getId(),
+                            event.getRetryCount(),
+                            reason);
+                } else {
+                    log.warn(
+                            "Outbox delivery failed (id={}, retry={}): {}",
+                            event.getId(),
+                            event.getRetryCount(),
+                            reason);
+                }
                 outboxRepository.save(event);
-                log.warn("Outbox delivery failed (id={}, retry={}): {}", event.getId(), event.getRetryCount(), ex.getMessage());
             }
         }
     }
