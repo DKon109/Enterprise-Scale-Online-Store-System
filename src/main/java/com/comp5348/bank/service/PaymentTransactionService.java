@@ -3,6 +3,7 @@ package com.comp5348.bank.service;
 import com.comp5348.bank.dto.PaymentTransactionDTO;
 import com.comp5348.bank.model.PaymentTransaction;
 import com.comp5348.bank.repository.PaymentTransactionRepository;
+import com.comp5348.messaging.bank.BankMessageProducer;
 import jakarta.transaction.Transactional;
 import java.time.LocalDateTime;
 import java.util.Objects;
@@ -17,10 +18,14 @@ import org.springframework.util.StringUtils;
 @Service
 public class PaymentTransactionService {
     private final PaymentTransactionRepository paymentTransactionRepository;
+    private final BankMessageProducer bankMessageProducer;
 
     @Autowired
-    public PaymentTransactionService(PaymentTransactionRepository paymentTransactionRepository) {
+    public PaymentTransactionService(
+            PaymentTransactionRepository paymentTransactionRepository,
+            BankMessageProducer bankMessageProducer) {
         this.paymentTransactionRepository = paymentTransactionRepository;
+        this.bankMessageProducer = bankMessageProducer;
     }
 
     @Transactional
@@ -42,6 +47,7 @@ public class PaymentTransactionService {
                     paymentTransaction.setCorrelationId(trimToNull(correlationId));
 
                     PaymentTransaction saved = paymentTransactionRepository.save(paymentTransaction);
+                    bankMessageProducer.publishTransactionEvent(saved, "payment.success");
                     return new TransactionResult(new PaymentTransactionDTO(saved), true);
                 });
     }
@@ -69,6 +75,7 @@ public class PaymentTransactionService {
                     paymentTransaction.setCorrelationId(trimToNull(correlationId));
 
                     PaymentTransaction saved = paymentTransactionRepository.save(paymentTransaction);
+                    bankMessageProducer.publishTransactionEvent(saved, "refund.completed");
                     return new TransactionResult(new PaymentTransactionDTO(saved), true);
                 });
     }

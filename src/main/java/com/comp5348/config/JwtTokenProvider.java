@@ -2,7 +2,6 @@ package com.comp5348.config;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
@@ -40,7 +39,7 @@ public class JwtTokenProvider {
                 .setSubject(username)
                 .setIssuedAt(now)
                 .setExpiration(expiryDate)
-                .signWith(secretKey, SignatureAlgorithm.HS512)
+                .signWith(secretKey, Jwts.SIG.HS512)
                 .compact();
     }
 
@@ -80,4 +79,3 @@ public class JwtTokenProvider {
         }
     }
 }
-

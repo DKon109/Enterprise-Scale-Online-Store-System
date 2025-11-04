@@ -1,4 +1,5 @@
 .gradle
+.gradle-home/
 build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
@@ -152,3 +153,4 @@ OUTBOX_PATTERN_REQUIREMENTS_MAPPING.md
 OUTBOX_PATTERN_SUMMARY.md
 OUTBOX_VS_MESSAGE_QUEUE_EXPLAINED.md
 OUTBOX_VS_MESSAGE_QUEUE_QUICK_ANSWER.md
+E2E_IDEMPOTENCY_TEST.sh
