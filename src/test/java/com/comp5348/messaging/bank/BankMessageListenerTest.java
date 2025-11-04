@@ -1,18 +1,34 @@
 package com.comp5348.messaging.bank;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.comp5348.bank.service.PaymentTransactionService;
+import com.comp5348.messaging.config.RabbitMQConfig;
 import com.comp5348.messaging.events.EventMessage;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
 class BankMessageListenerTest {
 
-    private final PaymentTransactionService paymentTransactionService = mock(PaymentTransactionService.class);
-    private final BankMessageListener listener = new BankMessageListener(paymentTransactionService);
+    private PaymentTransactionService paymentTransactionService;
+    private RabbitTemplate rabbitTemplate;
+    private BankMessageListener listener;
+
+    @BeforeEach
+    void setUp() {
+        paymentTransactionService = mock(PaymentTransactionService.class);
+        rabbitTemplate = mock(RabbitTemplate.class);
+        listener = new BankMessageListener(paymentTransactionService, rabbitTemplate);
+    }
 
     @Test
     void handlesPaymentSuccessEventWithoutCallingService() {
@@ -29,6 +45,7 @@ class BankMessageListenerTest {
 
         assertDoesNotThrow(() -> listener.onMessage(event));
         verifyNoInteractions(paymentTransactionService);
+        verifyNoInteractions(rabbitTemplate);
     }
 
     @Test
@@ -46,6 +63,7 @@ class BankMessageListenerTest {
 
         assertDoesNotThrow(() -> listener.onMessage(event));
         verifyNoInteractions(paymentTransactionService);
+        verifyNoInteractions(rabbitTemplate);
     }
 
     @Test
@@ -63,6 +81,13 @@ class BankMessageListenerTest {
 
         assertDoesNotThrow(() -> listener.onMessage(event));
         verifyNoInteractions(paymentTransactionService);
+        ArgumentCaptor<EventMessage> messageCaptor = ArgumentCaptor.forClass(EventMessage.class);
+        verify(rabbitTemplate).convertAndSend(eq(RabbitMQConfig.EMAIL_QUEUE), messageCaptor.capture());
+        EventMessage forwarded = messageCaptor.getValue();
+        assertEquals("REFUND_COMPLETED", forwarded.getType());
+        assertEquals(event.getOrderId(), forwarded.getOrderId());
+        assertEquals(event.getCorrelationId(), forwarded.getCorrelationId());
+        assertNotNull(forwarded.getTimestamp());
     }
 
     @Test
@@ -80,5 +105,6 @@ class BankMessageListenerTest {
 
         assertDoesNotThrow(() -> listener.onMessage(event));
         verifyNoInteractions(paymentTransactionService);
+        verifyNoInteractions(rabbitTemplate);
     }
 }

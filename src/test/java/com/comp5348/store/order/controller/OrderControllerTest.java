@@ -3,6 +3,7 @@ package com.comp5348.store.order.controller;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
@@ -77,7 +78,7 @@ class OrderControllerTest {
         UUID orderId = UUID.randomUUID();
         Order order = new Order(orderId, customerId, "SKU-001", 5);
 
-        when(orderOrchestrator.placeOrder(eq(customerId), eq("SKU-001"), eq(5)))
+        when(orderOrchestrator.placeOrder(eq(customerId), eq("SKU-001"), eq(5), isNull(), isNull()))
                 .thenReturn(orderId);
         when(orderService.getOrder(orderId)).thenReturn(order);
 
@@ -155,19 +156,24 @@ class OrderControllerTest {
     }
 
     @Test
-    void cancelOrderReturns204() throws Exception {
+    void cancelOrderReturns200WithBody() throws Exception {
         UUID orderId = UUID.randomUUID();
-        doNothing().when(orderOrchestrator).cancel(orderId);
+        Order order = new Order(orderId, UUID.randomUUID(), "SKU-100", 1);
+        order.cancel();
+        doNothing().when(orderOrchestrator).cancel(eq(orderId), isNull());
+        when(orderService.getOrder(orderId)).thenReturn(order);
 
         mockMvc.perform(post("/orders/{orderId}/cancel", orderId))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.orderId").value(orderId.toString()))
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
     }
 
     @Test
     void cancelOrderConflictReturns409() throws Exception {
         UUID orderId = UUID.randomUUID();
         doThrow(new IllegalStateException("cannot cancel"))
-                .when(orderOrchestrator).cancel(orderId);
+                .when(orderOrchestrator).cancel(eq(orderId), isNull());
 
         mockMvc.perform(post("/orders/{orderId}/cancel", orderId))
                 .andExpect(status().isConflict());

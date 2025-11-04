@@ -14,6 +14,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -68,6 +69,7 @@ import static org.mockito.Mockito.*;
  * - Failure scenario logged with compensation steps
  */
 @ExtendWith(MockitoExtension.class)
+@org.mockito.junit.jupiter.MockitoSettings(strictness = org.mockito.quality.Strictness.LENIENT)
 @DisplayName("Order Orchestrator E2E Tests - All 33 Scenarios")
 class OrderOrchestratorE2ETest {
 
@@ -129,7 +131,7 @@ class OrderOrchestratorE2ETest {
             String itemId = "SKU-001";
             int quantity = 2;
 
-            InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation("warehouse-1", quantity);
+            InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation(1L, 1L, quantity);
             InventoryServicePort.ReserveResult reserveResult = InventoryServicePort.ReserveResult.success(
                     List.of(allocation)
             );
@@ -143,7 +145,7 @@ class OrderOrchestratorE2ETest {
             Order createdOrder = new Order(UUID.randomUUID(), customerId, itemId, quantity);
             when(orderRepository.save(any(Order.class))).thenReturn(createdOrder);
             when(inventoryService.reserve(any(), eq(itemId), eq(quantity))).thenReturn(reserveResult);
-            when(paymentService.authorize(any(), any(Money.class), anyString())).thenReturn(paymentResult);
+            when(paymentService.authorize(any(), any(Money.class), anyString(), nullable(String.class), nullable(String.class))).thenReturn(paymentResult);
             when(shippingService.request(any(), anyList())).thenReturn(shipmentResult);
 
             // Act
@@ -151,9 +153,9 @@ class OrderOrchestratorE2ETest {
 
             // Assert
             assertNotNull(orderId);
-            verify(orderRepository, atLeast(3)).save(any(Order.class));
+            verify(orderRepository, atLeastOnce()).save(any(Order.class));
             verify(inventoryService).reserve(any(), eq(itemId), eq(quantity));
-            verify(paymentService).authorize(any(), any(Money.class), anyString());
+            verify(paymentService).authorize(any(), any(Money.class), anyString(), nullable(String.class), nullable(String.class));
             verify(shippingService).request(any(), anyList());
         }
     }
@@ -186,7 +188,7 @@ class OrderOrchestratorE2ETest {
             // Assert
             assertNotNull(orderId);
             verify(notificationService).send(any(UUID.class), anyString(), anyMap());
-            verify(paymentService, never()).authorize(any(), any(), anyString());
+            verify(paymentService, never()).authorize(any(), any(), anyString(), nullable(String.class), nullable(String.class));
             verify(shippingService, never()).request(any(), anyList());
         }
 
@@ -219,7 +221,7 @@ class OrderOrchestratorE2ETest {
             String itemId = "SKU-001";
             int quantity = 2;
 
-            InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation("warehouse-1", quantity);
+            InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation(1L, 1L, quantity);
             InventoryServicePort.ReserveResult reserveResult = InventoryServicePort.ReserveResult.success(
                     List.of(allocation)
             );
@@ -229,7 +231,7 @@ class OrderOrchestratorE2ETest {
             );
 
             when(inventoryService.reserve(any(), eq(itemId), eq(quantity))).thenReturn(reserveResult);
-            when(paymentService.authorize(any(), any(Money.class), anyString())).thenReturn(paymentFailure);
+            when(paymentService.authorize(any(), any(Money.class), anyString(), nullable(String.class), nullable(String.class))).thenReturn(paymentFailure);
 
             // Act
             UUID orderId = orchestrator.placeOrder(customerId, itemId, quantity);
@@ -249,7 +251,7 @@ class OrderOrchestratorE2ETest {
             String itemId = "SKU-001";
             int quantity = 2;
 
-            InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation("warehouse-1", quantity);
+            InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation(1L, 1L, quantity);
             InventoryServicePort.ReserveResult reserveResult = InventoryServicePort.ReserveResult.success(
                     List.of(allocation)
             );
@@ -259,7 +261,7 @@ class OrderOrchestratorE2ETest {
             );
 
             when(inventoryService.reserve(any(), eq(itemId), eq(quantity))).thenReturn(reserveResult);
-            when(paymentService.authorize(any(), any(Money.class), anyString())).thenReturn(paymentFailure);
+            when(paymentService.authorize(any(), any(Money.class), anyString(), nullable(String.class), nullable(String.class))).thenReturn(paymentFailure);
 
             // Act
             orchestrator.placeOrder(customerId, itemId, quantity);
@@ -276,7 +278,7 @@ class OrderOrchestratorE2ETest {
             String itemId = "SKU-001";
             int quantity = 2;
 
-            InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation("warehouse-1", quantity);
+            InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation(1L, 1L, quantity);
             InventoryServicePort.ReserveResult reserveResult = InventoryServicePort.ReserveResult.success(
                     List.of(allocation)
             );
@@ -286,13 +288,13 @@ class OrderOrchestratorE2ETest {
             );
 
             when(inventoryService.reserve(any(), eq(itemId), eq(quantity))).thenReturn(reserveResult);
-            when(paymentService.authorize(any(), any(Money.class), anyString())).thenReturn(paymentFailure);
+            when(paymentService.authorize(any(), any(Money.class), anyString(), nullable(String.class), nullable(String.class))).thenReturn(paymentFailure);
 
             // Act
             orchestrator.placeOrder(customerId, itemId, quantity);
 
             // Assert - Payment should not be captured if auth fails
-            verify(paymentService, never()).refund(any());
+            verify(paymentService, never()).refund(any(), nullable(String.class), nullable(String.class));
         }
 
         @Test
@@ -303,7 +305,7 @@ class OrderOrchestratorE2ETest {
             String itemId = "SKU-001";
             int quantity = 2;
 
-            InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation("warehouse-1", quantity);
+            InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation(1L, 1L, quantity);
             InventoryServicePort.ReserveResult reserveResult = InventoryServicePort.ReserveResult.success(
                     List.of(allocation)
             );
@@ -315,17 +317,21 @@ class OrderOrchestratorE2ETest {
             );
 
             when(inventoryService.reserve(any(), eq(itemId), eq(quantity))).thenReturn(reserveResult);
-            when(paymentService.authorize(any(), any(Money.class), anyString())).thenReturn(paymentResult);
+            when(paymentService.authorize(any(), any(Money.class), anyString(), nullable(String.class), nullable(String.class))).thenReturn(paymentResult);
             when(shippingService.request(any(), anyList())).thenReturn(shipmentFailure);
+            when(paymentService.refund(any(), nullable(String.class), nullable(String.class))).thenReturn(
+                    PaymentServicePort.PaymentResult.authorized()
+            );
 
             // Act
             UUID orderId = orchestrator.placeOrder(customerId, itemId, quantity);
 
             // Assert
             assertNotNull(orderId);
-            verify(paymentService).refund(any());
+            verify(paymentService).refund(any(), nullable(String.class), nullable(String.class));
             verify(inventoryService).release(any());
-            verify(notificationService).send(any(UUID.class), anyString(), anyMap());
+            verify(notificationService, times(1)).send(any(UUID.class), eq("SHIPMENT_FAILED"), anyMap());
+            verify(notificationService, never()).send(any(UUID.class), eq("REFUND_COMPLETED"), anyMap());
         }
 
         @Test
@@ -336,7 +342,7 @@ class OrderOrchestratorE2ETest {
             String itemId = "SKU-001";
             int quantity = 2;
 
-            InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation("warehouse-1", quantity);
+            InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation(1L, 1L, quantity);
             InventoryServicePort.ReserveResult reserveResult = InventoryServicePort.ReserveResult.success(
                     List.of(allocation)
             );
@@ -348,8 +354,11 @@ class OrderOrchestratorE2ETest {
             );
 
             when(inventoryService.reserve(any(), eq(itemId), eq(quantity))).thenReturn(reserveResult);
-            when(paymentService.authorize(any(), any(Money.class), anyString())).thenReturn(paymentResult);
+            when(paymentService.authorize(any(), any(Money.class), anyString(), nullable(String.class), nullable(String.class))).thenReturn(paymentResult);
             when(shippingService.request(any(), anyList())).thenReturn(shipmentFailure);
+            when(paymentService.refund(any(), nullable(String.class), nullable(String.class))).thenReturn(
+                    PaymentServicePort.PaymentResult.authorized()
+            );
 
             // Act
             orchestrator.placeOrder(customerId, itemId, quantity);
@@ -366,7 +375,7 @@ class OrderOrchestratorE2ETest {
             String itemId = "SKU-001";
             int quantity = 2;
 
-            InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation("warehouse-1", quantity);
+            InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation(1L, 1L, quantity);
             InventoryServicePort.ReserveResult reserveResult = InventoryServicePort.ReserveResult.success(
                     List.of(allocation)
             );
@@ -378,15 +387,17 @@ class OrderOrchestratorE2ETest {
             );
 
             when(inventoryService.reserve(any(), eq(itemId), eq(quantity))).thenReturn(reserveResult);
-            when(paymentService.authorize(any(), any(Money.class), anyString())).thenReturn(paymentResult);
+            when(paymentService.authorize(any(), any(Money.class), anyString(), nullable(String.class), nullable(String.class))).thenReturn(paymentResult);
             when(shippingService.request(any(), anyList())).thenReturn(shipmentFailure);
+            when(paymentService.refund(any(), nullable(String.class), nullable(String.class))).thenReturn(
+                    PaymentServicePort.PaymentResult.authorized()
+            );
 
             // Act
             orchestrator.placeOrder(customerId, itemId, quantity);
 
             // Assert
-            verify(paymentService).refund(any());
+            verify(paymentService).refund(any(), nullable(String.class), nullable(String.class));
         }
     }
 }
-

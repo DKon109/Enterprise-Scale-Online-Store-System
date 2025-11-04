@@ -48,7 +48,7 @@ class FulfillmentControllerTest {
     @Test
     void reserve_withUuidPayload_returnsCreated() throws Exception {
         UUID orderId = UUID.randomUUID();
-        UUID fulfillmentId = UUID.randomUUID();
+        long fulfillmentId = 42L;
 
         Fulfillment fulfillment = new Fulfillment(buildOrder(orderId), "42 Test Street");
         fulfillment.markReserved();
@@ -68,7 +68,7 @@ class FulfillmentControllerTest {
                                 }
                                 """.formatted(orderId)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(fulfillmentId.toString()))
+                .andExpect(jsonPath("$.id").value((int) fulfillmentId))
                 .andExpect(jsonPath("$.orderId").value(orderId.toString()));
 
         verify(fulfillmentService, times(1)).reserve(eq(orderId), eq("42 Test Street"), eq(99L), eq(3));
@@ -79,7 +79,7 @@ class FulfillmentControllerTest {
         UUID orderId = UUID.randomUUID();
         Fulfillment fulfillment = new Fulfillment(buildOrder(orderId), "99 Example Ave");
         fulfillment.markReserved();
-        ReflectionTestUtils.setField(fulfillment, "id", UUID.randomUUID());
+        ReflectionTestUtils.setField(fulfillment, "id", 99L);
 
         when(fulfillmentService.listByOrderId(orderId)).thenReturn(List.of(fulfillment));
 
