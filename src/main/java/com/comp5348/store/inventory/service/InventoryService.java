@@ -139,4 +139,22 @@ public class InventoryService {
     public Collection<Inventory> viewAllInventory(){
         return invRep.findAll();
     }
+
+    /** Add or update inventory stock for a product in a warehouse */
+    @Transactional
+    public Inventory addStock(Long warehouseId, Long productId, int quantity) {
+        if (warehouseId == null || productId == null || quantity <= 0) {
+            throw new IllegalArgumentException("Invalid warehouse, product, or quantity");
+        }
+
+        Optional<Inventory> existing = invRep.findByWarehouseIdAndProductId(warehouseId, productId);
+        Inventory inv;
+        if (existing.isPresent()) {
+            inv = existing.get();
+            inv.setQuantityAvailable(inv.getQuantityAvailable() + quantity);
+        } else {
+            inv = new Inventory(warehouseId, productId, quantity, 0);
+        }
+        return invRep.save(inv);
+    }
 }
