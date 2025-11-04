@@ -1,6 +1,9 @@
 package com.comp5348.store.customer.controller;
 
+import com.comp5348.config.JwtTokenProvider;
 import com.comp5348.store.customer.controller.dto.CustomerResponse;
+import com.comp5348.store.customer.controller.dto.LoginRequest;
+import com.comp5348.store.customer.controller.dto.LoginResponse;
 import com.comp5348.store.customer.controller.dto.RegisterCustomerRequest;
 import com.comp5348.store.customer.model.Customer;
 import com.comp5348.store.customer.service.CustomerService;
@@ -19,9 +22,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class CustomerController {
 
     private final CustomerService customerService;
+    private final JwtTokenProvider jwtTokenProvider;
 
-    public CustomerController(CustomerService customerService) {
+    public CustomerController(
+            CustomerService customerService,
+            JwtTokenProvider jwtTokenProvider) {
         this.customerService = customerService;
+        this.jwtTokenProvider = jwtTokenProvider;
     }
 
     @PostMapping
@@ -30,6 +37,14 @@ public class CustomerController {
         Customer customer =
             customerService.registerCustomer(request.getUsername(), request.getEmail(), request.getPassword());
         return CustomerResponse.from(customer);
+    }
+
+    @PostMapping("/login")
+    public LoginResponse login(@Valid @RequestBody LoginRequest request) {
+        Customer customer = customerService.getByUsername(request.getUsername());
+        customerService.validatePassword(request.getPassword(), customer.getPasswordHash());
+        String token = jwtTokenProvider.generateToken(customer.getUsername());
+        return new LoginResponse(token, customer.getUsername());
     }
 
     @GetMapping("/me")
