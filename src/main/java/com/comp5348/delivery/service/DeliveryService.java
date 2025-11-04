@@ -56,7 +56,7 @@ public class DeliveryService {
                     Delivery d = opt.get();
 
                     // 5% failure
-                    if (random.nextDouble() < 0.05) {
+                    if (random.nextDouble() < 0.5) { //50% chance of failure
                         d.cancel(); //fail
                     } else {
                         d.markDispatched(); // dispatched from the stock

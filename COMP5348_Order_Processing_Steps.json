@@ -1,0 +1,311 @@
+{
+	"info": {
+		"_postman_id": "order-processing-steps",
+		"name": "COMP5348 - Order Processing Steps",
+		"description": "Break down order processing into individual steps:\n1. Place Order (PENDING)\n2. Reserve Stock (PENDING → RESERVED)\n3. Authorize Payment (RESERVED → PAID)\n4. Request Shipment (PAID → SHIPMENT_REQUESTED)\n5. Cancel Order (anytime before SHIPMENT_REQUESTED)\n\nEach step is a separate endpoint. Click through them one by one!",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Step 1: Place Order (PENDING)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 201\", function () {",
+							"    pm.response.to.have.status(201);",
+							"});",
+							"",
+							"pm.test(\"Order created in PENDING status\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData.orderId).to.exist;",
+							"    pm.expect(jsonData.status).to.equal(\"PENDING\");",
+							"    ",
+							"    pm.collectionVariables.set(\"orderId\", jsonData.orderId);",
+							"    pm.collectionVariables.set(\"correlationId\", pm.variables.replaceIn('{{$randomUUID}}'));",
+							"    ",
+							"    console.log(\"✅ Order created: \" + jsonData.orderId);",
+							"    console.log(\"✅ Status: \" + jsonData.status);",
+							"    console.log(\"👉 Next: Click 'Step 2: Reserve Stock'\");",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"customerId\": \"550e8400-e29b-41d4-a716-446655440001\",\n  \"itemId\": \"1\",\n  \"quantity\": 2\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8081/orders",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8081",
+					"path": [
+						"orders"
+					]
+				},
+				"description": "Creates a new order in PENDING status. Order is saved but no processing happens yet."
+			},
+			"response": []
+		},
+		{
+			"name": "Step 2: Reserve Stock (PENDING → RESERVED)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Order transitioned to RESERVED\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData.status).to.equal(\"RESERVED\");",
+							"    ",
+							"    console.log(\"✅ Stock reserved\");",
+							"    console.log(\"✅ Status: \" + jsonData.status);",
+							"    console.log(\"👉 Next: Click 'Step 3: Authorize Payment'\");",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "X-Correlation-ID",
+						"value": "{{correlationId}}"
+					}
+				],
+				"url": {
+					"raw": "http://localhost:8081/orders/{{orderId}}/reserve-stock",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8081",
+					"path": [
+						"orders",
+						"{{orderId}}",
+						"reserve-stock"
+					]
+				},
+				"description": "Reserves stock from warehouse. Order transitions from PENDING → RESERVED."
+			},
+			"response": []
+		},
+		{
+			"name": "Step 3: Authorize Payment (RESERVED → PAID)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Order transitioned to PAID\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData.status).to.equal(\"PAID\");",
+							"    ",
+							"    console.log(\"✅ Payment authorized\");",
+							"    console.log(\"✅ Status: \" + jsonData.status);",
+							"    console.log(\"⏸️  CANCELLATION WINDOW OPEN - You can cancel now!\");",
+							"    console.log(\"👉 Next: Click 'Step 4: Request Shipment' OR 'Cancel Order'\");",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "X-Correlation-ID",
+						"value": "{{correlationId}}"
+					}
+				],
+				"url": {
+					"raw": "http://localhost:8081/orders/{{orderId}}/authorize-payment",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8081",
+					"path": [
+						"orders",
+						"{{orderId}}",
+						"authorize-payment"
+					]
+				},
+				"description": "Authorizes payment with Bank. Order transitions from RESERVED → PAID.\n\n⏸️ CANCELLATION WINDOW OPEN - You can now cancel the order before shipment!"
+			},
+			"response": []
+		},
+		{
+			"name": "Step 4: Request Shipment (PAID → SHIPMENT_REQUESTED)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Order transitioned to SHIPMENT_REQUESTED\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData.status).to.equal(\"SHIPMENT_REQUESTED\");",
+							"    ",
+							"    console.log(\"✅ Shipment requested from DeliveryCo\");",
+							"    console.log(\"✅ Status: \" + jsonData.status);",
+							"    console.log(\"🚫 Cancellation window CLOSED - Cannot cancel anymore\");",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "X-Correlation-ID",
+						"value": "{{correlationId}}"
+					}
+				],
+				"url": {
+					"raw": "http://localhost:8081/orders/{{orderId}}/request-shipment",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8081",
+					"path": [
+						"orders",
+						"{{orderId}}",
+						"request-shipment"
+					]
+				},
+				"description": "Requests shipment from DeliveryCo. Order transitions from PAID → SHIPMENT_REQUESTED.\n\n🚫 After this, the order CANNOT be cancelled (per requirement §50-54)"
+			},
+			"response": []
+		},
+		{
+			"name": "Cancel Order (Only works if PAID)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"if (pm.response.code === 200) {",
+							"    pm.test(\"Order cancelled successfully\", function () {",
+							"        var jsonData = pm.response.json();",
+							"        pm.expect(jsonData.status).to.equal(\"CANCELLED\");",
+							"        console.log(\"✅ Order cancelled\");",
+							"        console.log(\"✅ Status: \" + jsonData.status);",
+							"    });",
+							"} else if (pm.response.code === 409) {",
+							"    pm.test(\"Cancellation rejected (shipment already requested)\", function () {",
+							"        console.log(\"❌ Cannot cancel - shipment already requested\");",
+							"        console.log(\"📋 Compliance: §50-54 - Only cancellable BEFORE shipment request\");",
+							"    });",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "X-Correlation-ID",
+						"value": "{{correlationId}}"
+					}
+				],
+				"url": {
+					"raw": "http://localhost:8081/orders/{{orderId}}/cancel",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8081",
+					"path": [
+						"orders",
+						"{{orderId}}",
+						"cancel"
+					]
+				},
+				"description": "Cancel the order. Only works if order is in PAID status (before shipment request).\n\nIf order is already SHIPMENT_REQUESTED, this will return 409 Conflict."
+			},
+			"response": []
+		},
+		{
+			"name": "Check Order Status",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"var jsonData = pm.response.json();",
+							"console.log(\"Current Status: \" + jsonData.status);"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8081/orders/{{orderId}}",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8081",
+					"path": [
+						"orders",
+						"{{orderId}}"
+					]
+				},
+				"description": "Check the current status of the order at any time."
+			},
+			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "orderId",
+			"value": ""
+		},
+		{
+			"key": "correlationId",
+			"value": ""
+		}
+	]
+}
+
