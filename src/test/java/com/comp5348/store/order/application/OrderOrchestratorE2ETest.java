@@ -17,9 +17,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -91,16 +95,41 @@ class OrderOrchestratorE2ETest {
     @Mock
     private com.comp5348.store.order.application.support.TransactionTemplate transactionTemplate;
 
+    @Mock
+    private RabbitTemplate rabbitTemplate;
+
     private OrderOrchestrator orchestrator;
+    private Map<UUID, Order> orderStore;
 
     @BeforeEach
     void setUp() {
-        // Setup transaction template to execute immediately
+        orderStore = new HashMap<>();
+
+        // Setup transaction template to execute immediately (Supplier version)
+        doAnswer(invocation -> {
+            java.util.function.Supplier<?> supplier = invocation.getArgument(0);
+            return supplier.get();
+        }).when(transactionTemplate).execute(any(java.util.function.Supplier.class));
+
+        // Setup transaction template to execute immediately (Runnable version)
         doAnswer(invocation -> {
             Runnable runnable = invocation.getArgument(0);
             runnable.run();
             return null;
         }).when(transactionTemplate).execute(any(Runnable.class));
+
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order order = invocation.getArgument(0);
+            orderStore.put(order.getOrderId(), order);
+            return order;
+        });
+
+        when(orderRepository.findById(any(UUID.class))).thenAnswer(invocation -> {
+            UUID id = invocation.getArgument(0);
+            return Optional.ofNullable(orderStore.get(id));
+        });
+
+        when(inventoryService.allocations(any(UUID.class))).thenReturn(List.of());
 
         orchestrator = new OrderOrchestrator(
                 orderRepository,
@@ -111,7 +140,8 @@ class OrderOrchestratorE2ETest {
                 transactionTemplate,
                 null,
                 new com.comp5348.store.order.application.policy.CircuitBreaker(5, Duration.ofSeconds(30)),
-                null
+                null,
+                rabbitTemplate
         );
     }
 
@@ -130,6 +160,7 @@ class OrderOrchestratorE2ETest {
             UUID customerId = UUID.randomUUID();
             String itemId = "SKU-001";
             int quantity = 2;
+            String correlationId = "corr-123";
 
             InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation(1L, 1L, quantity);
             InventoryServicePort.ReserveResult reserveResult = InventoryServicePort.ReserveResult.success(
@@ -142,19 +173,28 @@ class OrderOrchestratorE2ETest {
                     true, "TRACK-001"
             );
 
-            Order createdOrder = new Order(UUID.randomUUID(), customerId, itemId, quantity);
-            when(orderRepository.save(any(Order.class))).thenReturn(createdOrder);
             when(inventoryService.reserve(any(), eq(itemId), eq(quantity))).thenReturn(reserveResult);
+            when(inventoryService.allocations(any(UUID.class))).thenReturn(List.of(allocation));
             when(paymentService.authorize(any(), any(Money.class), anyString(), nullable(String.class), nullable(String.class))).thenReturn(paymentResult);
             when(shippingService.request(any(), anyList())).thenReturn(shipmentResult);
 
-            // Act
+            // Act - Step 1: Place Order (PENDING)
             UUID orderId = orchestrator.placeOrder(customerId, itemId, quantity);
+            assertNotNull(orderId);
+
+            // Act - Step 2: Reserve Stock (PENDING → RESERVED)
+            orchestrator.reserveStock(orderId, correlationId);
+
+            // Act - Step 3: Authorize Payment (RESERVED → PAID)
+            orchestrator.authorizePayment(orderId, correlationId);
+
+            // Act - Step 4: Request Shipment (PAID → SHIPMENT_REQUESTED)
+            orchestrator.processShipment(orderId, correlationId);
 
             // Assert
-            assertNotNull(orderId);
             verify(orderRepository, atLeastOnce()).save(any(Order.class));
             verify(inventoryService).reserve(any(), eq(itemId), eq(quantity));
+            verify(inventoryService).deduct(any(UUID.class));
             verify(paymentService).authorize(any(), any(Money.class), anyString(), nullable(String.class), nullable(String.class));
             verify(shippingService).request(any(), anyList());
         }
@@ -175,6 +215,7 @@ class OrderOrchestratorE2ETest {
             UUID customerId = UUID.randomUUID();
             String itemId = "SKU-001";
             int quantity = 2;
+            String correlationId = "corr-123";
 
             InventoryServicePort.ReserveResult failureResult = InventoryServicePort.ReserveResult.failure(
                     "Insufficient stock"
@@ -182,11 +223,14 @@ class OrderOrchestratorE2ETest {
 
             when(inventoryService.reserve(any(), eq(itemId), eq(quantity))).thenReturn(failureResult);
 
-            // Act
+            // Act - Step 1: Place Order (PENDING)
             UUID orderId = orchestrator.placeOrder(customerId, itemId, quantity);
+            assertNotNull(orderId);
+
+            // Act - Step 2: Reserve Stock (should fail and cancel order)
+            assertThrows(IllegalStateException.class, () -> orchestrator.reserveStock(orderId, correlationId));
 
             // Assert
-            assertNotNull(orderId);
             verify(notificationService).send(any(UUID.class), anyString(), anyMap());
             verify(paymentService, never()).authorize(any(), any(), anyString(), nullable(String.class), nullable(String.class));
             verify(shippingService, never()).request(any(), anyList());
@@ -207,7 +251,8 @@ class OrderOrchestratorE2ETest {
             when(inventoryService.reserve(any(), eq(itemId), eq(quantity))).thenReturn(failureResult);
 
             // Act
-            orchestrator.placeOrder(customerId, itemId, quantity);
+            UUID orderId = orchestrator.placeOrder(customerId, itemId, quantity);
+            assertThrows(IllegalStateException.class, () -> orchestrator.reserveStock(orderId, null));
 
             // Assert
             verify(inventoryService, never()).release(any());
@@ -220,6 +265,7 @@ class OrderOrchestratorE2ETest {
             UUID customerId = UUID.randomUUID();
             String itemId = "SKU-001";
             int quantity = 2;
+            String correlationId = "corr-123";
 
             InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation(1L, 1L, quantity);
             InventoryServicePort.ReserveResult reserveResult = InventoryServicePort.ReserveResult.success(
@@ -233,11 +279,17 @@ class OrderOrchestratorE2ETest {
             when(inventoryService.reserve(any(), eq(itemId), eq(quantity))).thenReturn(reserveResult);
             when(paymentService.authorize(any(), any(Money.class), anyString(), nullable(String.class), nullable(String.class))).thenReturn(paymentFailure);
 
-            // Act
+            // Act - Step 1: Place Order (PENDING)
             UUID orderId = orchestrator.placeOrder(customerId, itemId, quantity);
+            assertNotNull(orderId);
+
+            // Act - Step 2: Reserve Stock (PENDING → RESERVED)
+            orchestrator.reserveStock(orderId, correlationId);
+
+            // Act - Step 3: Authorize Payment (should fail and release stock)
+            assertThrows(IllegalStateException.class, () -> orchestrator.authorizePayment(orderId, correlationId));
 
             // Assert
-            assertNotNull(orderId);
             verify(inventoryService).release(any());
             verify(shippingService, never()).request(any(), anyList());
             verify(notificationService).send(any(UUID.class), anyString(), anyMap());
@@ -250,6 +302,7 @@ class OrderOrchestratorE2ETest {
             UUID customerId = UUID.randomUUID();
             String itemId = "SKU-001";
             int quantity = 2;
+            String correlationId = "corr-456";
 
             InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation(1L, 1L, quantity);
             InventoryServicePort.ReserveResult reserveResult = InventoryServicePort.ReserveResult.success(
@@ -264,7 +317,9 @@ class OrderOrchestratorE2ETest {
             when(paymentService.authorize(any(), any(Money.class), anyString(), nullable(String.class), nullable(String.class))).thenReturn(paymentFailure);
 
             // Act
-            orchestrator.placeOrder(customerId, itemId, quantity);
+            UUID orderId = orchestrator.placeOrder(customerId, itemId, quantity);
+            orchestrator.reserveStock(orderId, correlationId);
+            assertThrows(IllegalStateException.class, () -> orchestrator.authorizePayment(orderId, correlationId));
 
             // Assert
             verify(inventoryService).release(any());
@@ -277,6 +332,7 @@ class OrderOrchestratorE2ETest {
             UUID customerId = UUID.randomUUID();
             String itemId = "SKU-001";
             int quantity = 2;
+            String correlationId = "corr-789";
 
             InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation(1L, 1L, quantity);
             InventoryServicePort.ReserveResult reserveResult = InventoryServicePort.ReserveResult.success(
@@ -291,7 +347,9 @@ class OrderOrchestratorE2ETest {
             when(paymentService.authorize(any(), any(Money.class), anyString(), nullable(String.class), nullable(String.class))).thenReturn(paymentFailure);
 
             // Act
-            orchestrator.placeOrder(customerId, itemId, quantity);
+            UUID orderId = orchestrator.placeOrder(customerId, itemId, quantity);
+            orchestrator.reserveStock(orderId, correlationId);
+            assertThrows(IllegalStateException.class, () -> orchestrator.authorizePayment(orderId, correlationId));
 
             // Assert - Payment should not be captured if auth fails
             verify(paymentService, never()).refund(any(), nullable(String.class), nullable(String.class));
@@ -304,6 +362,7 @@ class OrderOrchestratorE2ETest {
             UUID customerId = UUID.randomUUID();
             String itemId = "SKU-001";
             int quantity = 2;
+            String correlationId = "corr-123";
 
             InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation(1L, 1L, quantity);
             InventoryServicePort.ReserveResult reserveResult = InventoryServicePort.ReserveResult.success(
@@ -317,19 +376,30 @@ class OrderOrchestratorE2ETest {
             );
 
             when(inventoryService.reserve(any(), eq(itemId), eq(quantity))).thenReturn(reserveResult);
+            when(inventoryService.allocations(any(UUID.class))).thenReturn(List.of(allocation));
             when(paymentService.authorize(any(), any(Money.class), anyString(), nullable(String.class), nullable(String.class))).thenReturn(paymentResult);
             when(shippingService.request(any(), anyList())).thenReturn(shipmentFailure);
             when(paymentService.refund(any(), nullable(String.class), nullable(String.class))).thenReturn(
                     PaymentServicePort.PaymentResult.authorized()
             );
 
-            // Act
+            // Act - Step 1: Place Order (PENDING)
             UUID orderId = orchestrator.placeOrder(customerId, itemId, quantity);
+            assertNotNull(orderId);
+
+            // Act - Step 2: Reserve Stock (PENDING → RESERVED)
+            orchestrator.reserveStock(orderId, correlationId);
+
+            // Act - Step 3: Authorize Payment (RESERVED → PAID)
+            orchestrator.authorizePayment(orderId, correlationId);
+
+            // Act - Step 4: Request Shipment (should fail and refund)
+            orchestrator.processShipment(orderId, correlationId);
 
             // Assert
-            assertNotNull(orderId);
             verify(paymentService).refund(any(), nullable(String.class), nullable(String.class));
             verify(inventoryService).release(any());
+            verify(inventoryService, never()).deduct(any(UUID.class));
             verify(notificationService, times(1)).send(any(UUID.class), eq("SHIPMENT_FAILED"), anyMap());
             verify(notificationService, never()).send(any(UUID.class), eq("REFUND_COMPLETED"), anyMap());
         }
@@ -341,6 +411,7 @@ class OrderOrchestratorE2ETest {
             UUID customerId = UUID.randomUUID();
             String itemId = "SKU-001";
             int quantity = 2;
+            String correlationId = "corr-ship-failure";
 
             InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation(1L, 1L, quantity);
             InventoryServicePort.ReserveResult reserveResult = InventoryServicePort.ReserveResult.success(
@@ -354,6 +425,7 @@ class OrderOrchestratorE2ETest {
             );
 
             when(inventoryService.reserve(any(), eq(itemId), eq(quantity))).thenReturn(reserveResult);
+            when(inventoryService.allocations(any(UUID.class))).thenReturn(List.of(allocation));
             when(paymentService.authorize(any(), any(Money.class), anyString(), nullable(String.class), nullable(String.class))).thenReturn(paymentResult);
             when(shippingService.request(any(), anyList())).thenReturn(shipmentFailure);
             when(paymentService.refund(any(), nullable(String.class), nullable(String.class))).thenReturn(
@@ -361,10 +433,14 @@ class OrderOrchestratorE2ETest {
             );
 
             // Act
-            orchestrator.placeOrder(customerId, itemId, quantity);
+            UUID orderId = orchestrator.placeOrder(customerId, itemId, quantity);
+            orchestrator.reserveStock(orderId, correlationId);
+            orchestrator.authorizePayment(orderId, correlationId);
+            orchestrator.processShipment(orderId, correlationId);
 
             // Assert
             verify(inventoryService).release(any());
+            verify(inventoryService, never()).deduct(any(UUID.class));
         }
 
         @Test
@@ -374,6 +450,7 @@ class OrderOrchestratorE2ETest {
             UUID customerId = UUID.randomUUID();
             String itemId = "SKU-001";
             int quantity = 2;
+            String correlationId = "corr-ship-refund";
 
             InventoryServicePort.Allocation allocation = new InventoryServicePort.Allocation(1L, 1L, quantity);
             InventoryServicePort.ReserveResult reserveResult = InventoryServicePort.ReserveResult.success(
@@ -387,6 +464,7 @@ class OrderOrchestratorE2ETest {
             );
 
             when(inventoryService.reserve(any(), eq(itemId), eq(quantity))).thenReturn(reserveResult);
+            when(inventoryService.allocations(any(UUID.class))).thenReturn(List.of(allocation));
             when(paymentService.authorize(any(), any(Money.class), anyString(), nullable(String.class), nullable(String.class))).thenReturn(paymentResult);
             when(shippingService.request(any(), anyList())).thenReturn(shipmentFailure);
             when(paymentService.refund(any(), nullable(String.class), nullable(String.class))).thenReturn(
@@ -394,7 +472,10 @@ class OrderOrchestratorE2ETest {
             );
 
             // Act
-            orchestrator.placeOrder(customerId, itemId, quantity);
+            UUID orderId = orchestrator.placeOrder(customerId, itemId, quantity);
+            orchestrator.reserveStock(orderId, correlationId);
+            orchestrator.authorizePayment(orderId, correlationId);
+            orchestrator.processShipment(orderId, correlationId);
 
             // Assert
             verify(paymentService).refund(any(), nullable(String.class), nullable(String.class));

@@ -1,5 +1,7 @@
 package com.comp5348.store.order.application.service;
 
+import com.comp5348.messaging.config.RabbitMQConfig;
+import com.comp5348.messaging.events.EventMessage;
 import com.comp5348.store.order.application.policy.CircuitBreaker;
 import com.comp5348.store.order.application.policy.CircuitBreakerOpenException;
 import com.comp5348.store.order.application.policy.RetryPolicy;
@@ -15,16 +17,22 @@ import com.comp5348.store.order.model.Money;
 import com.comp5348.store.order.model.Order;
 import com.comp5348.store.order.repository.OrderRepository;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.stereotype.Service;
 
 @Service
 public class OrderOrchestrator {
+
+    private static final Logger log = LoggerFactory.getLogger(OrderOrchestrator.class);
 
     private static final Duration[] DEFAULT_BACKOFF = new Duration[]{
             Duration.ofMillis(200),
@@ -41,6 +49,7 @@ public class OrderOrchestrator {
     private final RetryPolicy retryPolicy;
     private final CircuitBreaker circuitBreaker;
     private final InterServiceCallLogger callLogger;
+    private final RabbitTemplate rabbitTemplate;
 
     public OrderOrchestrator(
             OrderRepository orders,
@@ -51,7 +60,8 @@ public class OrderOrchestrator {
             TransactionTemplate transactions,
             RetryPolicy retryPolicy,
             CircuitBreaker circuitBreaker,
-            InterServiceCallLogger callLogger) {
+            InterServiceCallLogger callLogger,
+            RabbitTemplate rabbitTemplate) {
         this.orders = Objects.requireNonNull(orders, "orders");
         this.inventory = Objects.requireNonNull(inventory, "inventory");
         this.payments = Objects.requireNonNull(payments, "payments");
@@ -61,6 +71,7 @@ public class OrderOrchestrator {
         this.retryPolicy = retryPolicy == null ? RetryPolicy.exponential(DEFAULT_BACKOFF) : retryPolicy;
         this.circuitBreaker = Objects.requireNonNull(circuitBreaker, "circuitBreaker");
         this.callLogger = callLogger == null ? InterServiceCallLogger.noop() : callLogger;
+        this.rabbitTemplate = Objects.requireNonNull(rabbitTemplate, "rabbitTemplate");
     }
 
     public UUID placeOrder(UUID customerId, String itemId, int quantity) {
@@ -91,14 +102,26 @@ public class OrderOrchestrator {
         order.setRequestId(requestId);
 
         transactions.execute(() -> orders.save(order));
-        return processNewOrder(order, correlationId);
+
+        // COMPLIANCE: §50-54 - Order Cancellation (Before Delivery Request Sent)
+        // Return immediately with PENDING order. Processing happens via separate endpoints.
+        // This allows customers to cancel before any processing begins.
+        return orderId;
     }
 
-    private UUID processNewOrder(Order order, String correlationId) {
-        UUID orderId = order.getOrderId();
-        List<InventoryServicePort.Allocation> allocations;
+    /**
+     * Step 1: Reserve stock for a PENDING order.
+     * PENDING → RESERVED
+     */
+    public void reserveStock(UUID orderId, String correlationId) {
+        Order order = getOrderRequired(orderId);
+
+        if (order.getStatus() != Order.Status.PENDING) {
+            throw new IllegalStateException("Order must be PENDING to reserve stock, but is " + order.getStatus());
+        }
+
         try {
-            allocations = executeWithRetryAndLogging(
+            List<InventoryServicePort.Allocation> allocations = executeWithRetryAndLogging(
                     "ReserveStock",
                     orderId,
                     correlationId,
@@ -110,17 +133,27 @@ public class OrderOrchestrator {
                         return result.allocations();
                     },
                     "Stock reservation failed after retries");
+
+            order.markReserved();
+            transactions.execute(() -> orders.save(order));
         } catch (IllegalStateException reserveFailure) {
             String detailedReason = extractFailureReason(reserveFailure);
             String displayReason = normaliseReservationReason(detailedReason);
             handleReservationFailure(order, displayReason, detailedReason);
-            return orderId;
+            throw reserveFailure;
         }
+    }
 
-        order.markReserved();
-        transactions.execute(() -> {
-            orders.save(order);
-        });
+    /**
+     * Step 2: Authorize payment for a RESERVED order.
+     * RESERVED → PAID
+     */
+    public void authorizePayment(UUID orderId, String correlationId) {
+        Order order = getOrderRequired(orderId);
+
+        if (order.getStatus() != Order.Status.RESERVED) {
+            throw new IllegalStateException("Order must be RESERVED to authorize payment, but is " + order.getStatus());
+        }
 
         Money totalAmount = Money.of(order.getQuantity());
         String idempotencyKey = IdempotencyKeyGenerator.forOrder(orderId);
@@ -135,11 +168,36 @@ public class OrderOrchestrator {
 
         if (!paymentResult.isAuthorized()) {
             handlePaymentFailure(order, paymentResult.reason(), correlationId);
-            return orderId;
+            throw new IllegalStateException("Payment authorization failed: " + paymentResult.reason());
         }
 
         order.markPaid();
         transactions.execute(() -> orders.save(order));
+
+        // Publish payment authorized event to message queue
+        publishPaymentAuthorizedEvent(orderId, correlationId);
+    }
+
+    /**
+     * Process shipment request for a PAID order.
+     * This is called asynchronously by ShipmentWorker to allow cancellation window.
+     *
+     * COMPLIANCE: §50-54 - Creates window for pre-shipment cancellation
+     */
+    public void processShipment(UUID orderId, String correlationId) {
+        Order order = getOrderRequired(orderId);
+
+        // Only process if order is still in PAID status (not cancelled)
+        if (order.getStatus() != Order.Status.PAID) {
+            return;
+        }
+
+        // Get allocations from inventory
+        List<InventoryServicePort.Allocation> allocations = inventory.allocations(orderId);
+        if (allocations == null || allocations.isEmpty()) {
+            handleShipmentFailure(order, "Missing inventory allocations", correlationId);
+            return;
+        }
 
         ShippingServicePort.ShipmentResult shipmentResult;
         try {
@@ -151,18 +209,26 @@ public class OrderOrchestrator {
                     "Shipment request exhausted");
         } catch (IllegalStateException shippingFailure) {
             handleShipmentFailure(order, extractFailureReason(shippingFailure), correlationId);
-            return orderId;
+            return;
         }
 
         if (!shipmentResult.isAccepted()) {
             handleShipmentFailure(order, "Shipment rejected", correlationId);
-            return orderId;
+            return;
+        }
+
+        try {
+            invokeAndLog("CommitReservedStock", orderId, correlationId, () -> inventory.deduct(orderId));
+        } catch (RuntimeException commitFailure) {
+            handleShipmentFailure(order, extractFailureReason(commitFailure), correlationId);
+            return;
         }
 
         order.markShipmentRequested();
         transactions.execute(() -> orders.save(order));
 
-        return orderId;
+        // Publish shipment requested event to message queue
+        publishShipmentRequestedEvent(orderId, correlationId);
     }
 
     public void markDelivered(UUID orderId) {
@@ -341,5 +407,51 @@ public class OrderOrchestrator {
             return null;
         }
         return value.trim();
+    }
+
+    // ===== Event Publishing to RabbitMQ =====
+
+    /**
+     * Publish payment authorized event to bank_queue.
+     * Listeners: BankMessageListener, EmailMessageListener
+     */
+    private void publishPaymentAuthorizedEvent(UUID orderId, String correlationId) {
+        try {
+            EventMessage event = new EventMessage();
+            event.setType("payment.authorized");
+            event.setOrderId(orderId);
+            event.setDescription("Payment authorized for order " + orderId);
+            event.setCorrelationId(correlationId);
+            event.setTimestamp(LocalDateTime.now());
+            event.setRetryCount(0);
+
+            rabbitTemplate.convertAndSend(RabbitMQConfig.BANK_QUEUE, event);
+            log.info("[OrderOrchestrator] Published payment.authorized event for order {} to {}", orderId, RabbitMQConfig.BANK_QUEUE);
+        } catch (Exception e) {
+            log.error("[OrderOrchestrator] Failed to publish payment.authorized event for order {}: {}", orderId, e.getMessage(), e);
+            // Don't throw - event publishing failure shouldn't block order processing
+        }
+    }
+
+    /**
+     * Publish shipment requested event to warehouse_queue.
+     * Listeners: WarehouseMessageListener
+     */
+    private void publishShipmentRequestedEvent(UUID orderId, String correlationId) {
+        try {
+            EventMessage event = new EventMessage();
+            event.setType("shipment.requested");
+            event.setOrderId(orderId);
+            event.setDescription("Shipment requested for order " + orderId);
+            event.setCorrelationId(correlationId);
+            event.setTimestamp(LocalDateTime.now());
+            event.setRetryCount(0);
+
+            rabbitTemplate.convertAndSend(RabbitMQConfig.WAREHOUSE_QUEUE, event);
+            log.info("[OrderOrchestrator] Published shipment.requested event for order {} to {}", orderId, RabbitMQConfig.WAREHOUSE_QUEUE);
+        } catch (Exception e) {
+            log.error("[OrderOrchestrator] Failed to publish shipment.requested event for order {}: {}", orderId, e.getMessage(), e);
+            // Don't throw - event publishing failure shouldn't block order processing
+        }
     }
 }

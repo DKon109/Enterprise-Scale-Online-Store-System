@@ -11,6 +11,8 @@ public interface InventoryServicePort {
 
     void deduct(UUID orderId);
 
+    List<Allocation> allocations(UUID orderId);
+
     final class ReserveResult {
         private final boolean success;
         private final List<Allocation> allocations;

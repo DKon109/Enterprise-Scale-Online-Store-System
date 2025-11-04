@@ -65,16 +65,12 @@ public class RabbitMQConfig {
         return QueueBuilder.durable(EMAIL_QUEUE_DLQ).build();
     }
 
-    // ===== Converter + Template =====
+    // ===== Converter =====
     @Bean
     public MessageConverter jsonMessageConverter() {
         return new Jackson2JsonMessageConverter();
     }
 
-    @Bean
-    public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory) {
-        RabbitTemplate template = new RabbitTemplate(connectionFactory);
-        template.setMessageConverter(jsonMessageConverter());
-        return template;
-    }
+    // Note: RabbitTemplate is auto-configured by Spring Boot
+    // We only need to configure the MessageConverter
 }

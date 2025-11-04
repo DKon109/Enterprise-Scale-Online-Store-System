@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 /**
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Component;
  * reliable delivery even if the downstream Email service is unavailable.
  */
 @Component
+@Primary
 public class OutboxNotificationServiceAdapter implements NotificationServicePort {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxNotificationServiceAdapter.class);

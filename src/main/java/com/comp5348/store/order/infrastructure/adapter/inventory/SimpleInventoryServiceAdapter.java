@@ -72,6 +72,17 @@ public class SimpleInventoryServiceAdapter implements InventoryServicePort {
         processReservation(orderId, "/inventory/commit", "commit");
     }
 
+    @Override
+    public List<Allocation> allocations(UUID orderId) {
+        List<AllocationDto> cached = reservationCache.get(orderId);
+        if (cached == null || cached.isEmpty()) {
+            return List.of();
+        }
+        return cached.stream()
+                .map(AllocationDto::toPortAllocation)
+                .toList();
+    }
+
     private void processReservation(UUID orderId, String path, String action) {
         List<AllocationDto> allocations = reservationCache.get(orderId);
         if (allocations == null || allocations.isEmpty()) {

@@ -93,6 +93,60 @@ public class OrderController {
     }
 
     /**
+     * Step 1: Reserve stock for a PENDING order.
+     * PENDING → RESERVED
+     */
+    @PostMapping("/{orderId}/reserve-stock")
+    public OrderResponse reserveStock(
+            @PathVariable UUID orderId,
+            @RequestHeader(value = "X-Correlation-ID", required = false) String correlationId) {
+        try {
+            String trimmedCorrelationId = StringUtils.hasText(correlationId) ? correlationId.trim() : null;
+            orderOrchestrator.reserveStock(orderId, trimmedCorrelationId);
+            Order updated = orderService.getOrder(orderId);
+            return OrderResponse.from(updated);
+        } catch (IllegalStateException ex) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, ex.getMessage(), ex);
+        }
+    }
+
+    /**
+     * Step 2: Authorize payment for a RESERVED order.
+     * RESERVED → PAID
+     */
+    @PostMapping("/{orderId}/authorize-payment")
+    public OrderResponse authorizePayment(
+            @PathVariable UUID orderId,
+            @RequestHeader(value = "X-Correlation-ID", required = false) String correlationId) {
+        try {
+            String trimmedCorrelationId = StringUtils.hasText(correlationId) ? correlationId.trim() : null;
+            orderOrchestrator.authorizePayment(orderId, trimmedCorrelationId);
+            Order updated = orderService.getOrder(orderId);
+            return OrderResponse.from(updated);
+        } catch (IllegalStateException ex) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, ex.getMessage(), ex);
+        }
+    }
+
+    /**
+     * Step 3: Request shipment for a PAID order.
+     * PAID → SHIPMENT_REQUESTED
+     */
+    @PostMapping("/{orderId}/request-shipment")
+    public OrderResponse requestShipment(
+            @PathVariable UUID orderId,
+            @RequestHeader(value = "X-Correlation-ID", required = false) String correlationId) {
+        try {
+            String trimmedCorrelationId = StringUtils.hasText(correlationId) ? correlationId.trim() : null;
+            orderOrchestrator.processShipment(orderId, trimmedCorrelationId);
+            Order updated = orderService.getOrder(orderId);
+            return OrderResponse.from(updated);
+        } catch (IllegalStateException ex) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, ex.getMessage(), ex);
+        }
+    }
+
+    /**
      * Cancel an order prior to shipment.
      */
     @PostMapping("/{orderId}/cancel")

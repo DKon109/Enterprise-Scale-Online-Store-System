@@ -48,4 +48,12 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
      * @return optional order if the request was processed before
      */
     Optional<Order> findByRequestId(String requestId);
+
+    /**
+     * Find all orders with a specific status.
+     *
+     * @param status the order status
+     * @return list of orders with the given status
+     */
+    List<Order> findByStatus(String status);
 }
