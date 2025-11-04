@@ -70,7 +70,7 @@ public class FulfillmentController {
      */
     @GetMapping
     public ResponseEntity<List<FulfillmentResponse>> listByOrder(
-            @RequestParam @NotNull @Min(1) UUID orderId) {
+            @RequestParam @NotNull UUID orderId) {
         List<FulfillmentResponse> list = fulfillmentService.listByOrderId(orderId)
                 .stream().map(FulfillmentResponse::from).toList();
         return ResponseEntity.ok(list);
@@ -80,7 +80,7 @@ public class FulfillmentController {
      * Retrieve a single fulfillment by its ID
      */
     @GetMapping("/{id}")
-    public ResponseEntity<FulfillmentResponse> getById(@PathVariable("id") @Min(1) UUID id) {
+    public ResponseEntity<FulfillmentResponse> getById(@PathVariable("id") UUID id) {
         List<FulfillmentResponse> found = fulfillmentService.listByOrderId(id)
                 .stream().map(FulfillmentResponse::from).toList();
         if (found.isEmpty()) {
@@ -93,7 +93,7 @@ public class FulfillmentController {
 
     /** DTO for creating/reserving fulfillment */
     public static class ReserveRequest {
-        @NotNull @Min(1) public UUID orderId;
+        @NotNull public UUID orderId;
         @NotBlank public String address;
         @NotNull @Min(1) public Long productId;
         @Min(1) public int quantity;

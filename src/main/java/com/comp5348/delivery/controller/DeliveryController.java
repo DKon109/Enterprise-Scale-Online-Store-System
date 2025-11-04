@@ -50,7 +50,7 @@ public class DeliveryController{
      */
     @GetMapping
     public ResponseEntity<List<DeliveryResponse>> listByOrder(
-            @RequestParam @NotNull @Min(1) UUID orderId) {
+            @RequestParam @NotNull UUID orderId) {
         List<DeliveryResponse> list = deliveryService.getDeliveriesByOrderId(orderId).stream().map(DeliveryResponse::from).toList();
         return ResponseEntity.ok(list);
     }
@@ -97,7 +97,7 @@ public class DeliveryController{
      * Validation is handled by Bean Validation
      */
     public static class CreateDeliveryRequest{
-        @NotNull @Min(1) public UUID orderId;
+        @NotNull public UUID orderId;
         @NotNull @Min(1) public Long warehouseId;
         @NotBlank public  String address;
         public String trackingNumber;
