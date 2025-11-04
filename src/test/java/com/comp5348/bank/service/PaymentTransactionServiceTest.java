@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import com.comp5348.bank.dto.PaymentTransactionDTO;
 import com.comp5348.bank.model.PaymentTransaction;
 import com.comp5348.bank.repository.PaymentTransactionRepository;
+import com.comp5348.messaging.bank.BankMessageProducer;
 import java.lang.reflect.Field;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -23,6 +24,9 @@ class PaymentTransactionServiceTest {
 
     @Mock
     private PaymentTransactionRepository paymentTransactionRepository;
+
+    @Mock
+    private BankMessageProducer bankMessageProducer;
 
     @InjectMocks
     private PaymentTransactionService service;
@@ -67,6 +71,9 @@ class PaymentTransactionServiceTest {
         assertEquals("Confirmed", saved.getStatus());
 
         verify(paymentTransactionRepository, times(1)).save(any(PaymentTransaction.class));
+        ArgumentCaptor<PaymentTransaction> eventCaptor = ArgumentCaptor.forClass(PaymentTransaction.class);
+        verify(bankMessageProducer).publishTransactionEvent(eventCaptor.capture(), eq("payment.success"));
+        assertSame(saved, eventCaptor.getValue());
     }
 
     @Test
@@ -91,6 +98,7 @@ class PaymentTransactionServiceTest {
         assertEquals("existing-correlation", dto.getCorrelationId());
 
         verify(paymentTransactionRepository, never()).save(any());
+        verify(bankMessageProducer, never()).publishTransactionEvent(any(), any());
     }
 
     @Test
@@ -102,7 +110,7 @@ class PaymentTransactionServiceTest {
                 () -> service.createPurchaseTransaction(orderId, 0.0, "key", null));
 
         assertEquals("Amount must be greater than zero", ex.getMessage());
-        verifyNoInteractions(paymentTransactionRepository);
+        verifyNoInteractions(paymentTransactionRepository, bankMessageProducer);
     }
 
     @Test
@@ -114,7 +122,7 @@ class PaymentTransactionServiceTest {
                 () -> service.createPurchaseTransaction(orderId, 50.0, "   ", null));
 
         assertEquals("Idempotency key is required", ex.getMessage());
-        verifyNoInteractions(paymentTransactionRepository);
+        verifyNoInteractions(paymentTransactionRepository, bankMessageProducer);
     }
 
     @Test
@@ -150,6 +158,9 @@ class PaymentTransactionServiceTest {
         assertEquals("Refund", persisted.getType());
         assertEquals(88.0, persisted.getAmount());
         assertEquals("Confirmed", persisted.getStatus());
+        ArgumentCaptor<PaymentTransaction> refundEventCaptor = ArgumentCaptor.forClass(PaymentTransaction.class);
+        verify(bankMessageProducer).publishTransactionEvent(refundEventCaptor.capture(), eq("refund.completed"));
+        assertSame(persisted, refundEventCaptor.getValue());
     }
 
     @Test
@@ -167,6 +178,7 @@ class PaymentTransactionServiceTest {
 
         assertFalse(result.createdNew());
         verify(paymentTransactionRepository, never()).save(any());
+        verify(bankMessageProducer, never()).publishTransactionEvent(any(), any());
     }
 
     @Test
@@ -183,6 +195,7 @@ class PaymentTransactionServiceTest {
                 () -> service.createRefundTransaction(orderId, null, "refund-key", null));
 
         assertTrue(ex.getMessage().contains("Unable to determine refund amount"));
+        verify(bankMessageProducer, never()).publishTransactionEvent(any(), any());
     }
 
     @Test
