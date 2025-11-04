@@ -13,12 +13,14 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -50,8 +52,20 @@ public class OrderController {
      * @return created order details
      */
     @PostMapping
-    public ResponseEntity<OrderResponse> placeOrder(@RequestBody @Valid PlaceOrderRequest request) {
-        UUID orderId = orderOrchestrator.placeOrder(request.customerId, request.itemId, request.quantity);
+    public ResponseEntity<OrderResponse> placeOrder(
+            @RequestBody @Valid PlaceOrderRequest request,
+            @RequestHeader(value = "X-Correlation-ID", required = false) String correlationId,
+            @RequestHeader(value = "X-Request-ID", required = false) String requestId) {
+
+        String trimmedCorrelationId = StringUtils.hasText(correlationId) ? correlationId.trim() : null;
+        String trimmedRequestId = StringUtils.hasText(requestId) ? requestId.trim() : null;
+
+        UUID orderId = orderOrchestrator.placeOrder(
+                request.customerId,
+                request.itemId,
+                request.quantity,
+                trimmedCorrelationId,
+                trimmedRequestId);
         Order created = orderService.getOrder(orderId);
         OrderResponse body = OrderResponse.from(created);
         return ResponseEntity.created(URI.create("/orders/" + created.getOrderId())).body(body);
@@ -82,10 +96,13 @@ public class OrderController {
      * Cancel an order prior to shipment.
      */
     @PostMapping("/{orderId}/cancel")
-    public ResponseEntity<Void> cancelOrder(@PathVariable UUID orderId) {
+    public OrderResponse cancelOrder(
+            @PathVariable UUID orderId,
+            @RequestHeader(value = "X-Correlation-ID", required = false) String correlationId) {
         try {
-            orderOrchestrator.cancel(orderId);
-            return ResponseEntity.noContent().build();
+            orderOrchestrator.cancel(orderId, StringUtils.hasText(correlationId) ? correlationId.trim() : null);
+            Order updated = orderService.getOrder(orderId);
+            return OrderResponse.from(updated);
         } catch (IllegalStateException ex) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, ex.getMessage(), ex);
         }
@@ -125,7 +142,8 @@ public class OrderController {
             int quantity,
             String status,
             String createdAt,
-            String updatedAt) {
+            String updatedAt,
+            String correlationId) {
 
         static OrderResponse from(Order order) {
             return new OrderResponse(
@@ -135,7 +153,8 @@ public class OrderController {
                     order.getQuantity(),
                     order.getStatus().name(),
                     order.getCreatedAt().toString(),
-                    order.getUpdatedAt().toString());
+                    order.getUpdatedAt().toString(),
+                    order.getCorrelationId());
         }
     }
 }

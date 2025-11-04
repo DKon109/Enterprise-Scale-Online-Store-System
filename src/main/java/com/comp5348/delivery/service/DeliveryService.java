@@ -13,6 +13,7 @@ import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 
 
@@ -136,6 +137,35 @@ public class DeliveryService {
     @Transactional(readOnly = true)
     public boolean hasDeliveryForOrder(UUID orderId) {
         return deliveryRepository.existsByOrder_OrderId(orderId);
+    }
+
+    @Transactional
+    public boolean markPickedUp(String trackingNumber) {
+        return updateStatusByTracking(trackingNumber, Delivery::markDispatched);
+    }
+
+    @Transactional
+    public boolean markInTransit(String trackingNumber) {
+        return updateStatusByTracking(trackingNumber, Delivery::markInTransit);
+    }
+
+    @Transactional
+    public boolean markDelivered(String trackingNumber) {
+        return updateStatusByTracking(trackingNumber, Delivery::markDelivered);
+    }
+
+    private boolean updateStatusByTracking(String trackingNumber, Consumer<Delivery> updater) {
+        if (trackingNumber == null || trackingNumber.isBlank()) {
+            return false;
+        }
+        Optional<Delivery> opt = deliveryRepository.findByTrackingNumber(trackingNumber);
+        if (opt.isEmpty()) {
+            return false;
+        }
+        Delivery delivery = opt.get();
+        updater.accept(delivery);
+        deliveryRepository.save(delivery);
+        return true;
     }
 
 }

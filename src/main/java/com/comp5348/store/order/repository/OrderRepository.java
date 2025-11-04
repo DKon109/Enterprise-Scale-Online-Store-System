@@ -40,4 +40,12 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
      * @throws org.springframework.data.crossstore.ChangeSetPersister.NotFoundException if not found
      */
     Optional<Order> findById(UUID orderId);
+
+    /**
+     * Find an order by the idempotency request identifier.
+     *
+     * @param requestId the idempotency key supplied by the client
+     * @return optional order if the request was processed before
+     */
+    Optional<Order> findByRequestId(String requestId);
 }
