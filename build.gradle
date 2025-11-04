@@ -32,6 +32,11 @@ dependencies {
     implementation 'org.springframework.retry:spring-retry:2.0.4'
     implementation 'org.json:json:20240303'
 
+    // --- JWT ---
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.3'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.3'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.3'
+
     // --- Database ---
     implementation 'org.postgresql:postgresql:42.7.3'
     runtimeOnly 'org.postgresql:postgresql'

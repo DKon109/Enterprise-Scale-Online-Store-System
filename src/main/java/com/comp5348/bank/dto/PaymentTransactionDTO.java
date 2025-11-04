@@ -2,6 +2,7 @@ package com.comp5348.bank.dto;
 
 import com.comp5348.bank.model.PaymentTransaction;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -20,8 +21,13 @@ public class PaymentTransactionDTO {
     private String type;
     private String status;
     private String bankReferenceID;
-    private LocalDateTime time;
-    private UUID orderID;
+    private LocalDateTime timestamp;
+
+    @JsonProperty("orderId")
+    private UUID orderId;
+
+    private String idempotencyKey;
+    private String correlationId;
 
     public PaymentTransactionDTO(PaymentTransaction entity) {
         this.id = entity.getId();
@@ -29,7 +35,9 @@ public class PaymentTransactionDTO {
         this.type = entity.getType();
         this.status = entity.getStatus();
         this.bankReferenceID = entity.getBankReferenceID();
-        this.time = entity.getTimeStamp();
-        this.orderID = entity.getOrderID();
+        this.timestamp = entity.getTimeStamp();
+        this.orderId = entity.getOrderID();
+        this.idempotencyKey = entity.getIdempotencyKey();
+        this.correlationId = entity.getCorrelationId();
     }
 }

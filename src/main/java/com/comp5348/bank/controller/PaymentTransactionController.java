@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -33,17 +34,28 @@ public class PaymentTransactionController {
     }
 
     @PostMapping
-    public ResponseEntity<PaymentTransactionDTO> createTransaction(@RequestBody @Valid PaymentTransactionRequest request) {
+    public ResponseEntity<PaymentTransactionDTO> createTransaction(
+            @RequestBody @Valid PaymentTransactionRequest request,
+            @RequestHeader(value = "X-Correlation-ID", required = false) String correlationId) {
         String type = request.type().trim().toLowerCase(Locale.ROOT);
-        PaymentTransactionDTO dto;
+        PaymentTransactionService.TransactionResult result;
 
         switch (type) {
-            case "purchase" -> dto = paymentTransactionService.createPurchaseTransaction(request.orderId(), request.amount());
-            case "refund" -> dto = paymentTransactionService.createRefundTransaction(request.orderId(), request.amount());
+            case "purchase" -> result = paymentTransactionService.createPurchaseTransaction(
+                    request.orderId(),
+                    request.amount(),
+                    request.idempotencyKey(),
+                    correlationId);
+            case "refund" -> result = paymentTransactionService.createRefundTransaction(
+                    request.orderId(),
+                    request.amount(),
+                    request.idempotencyKey(),
+                    correlationId);
             default -> throw new IllegalArgumentException("Unsupported transaction type: " + request.type());
         }
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(dto);
+        HttpStatus status = result.createdNew() ? HttpStatus.CREATED : HttpStatus.OK;
+        return ResponseEntity.status(status).body(result.transaction());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

@@ -16,6 +16,7 @@ import java.util.*;
 /**
  * Inventory REST API
  *  - GET    /inventory
+ *  - POST   /inventory/add?warehouseId=&productId=&qty=
  *  - POST   /inventory/reserve?productId=&qty=
  *  - POST   /inventory/commit
  *  - POST   /inventory/release
@@ -34,6 +35,17 @@ public class InventoryController {
     @GetMapping
     public ResponseEntity<Collection<Inventory>> listAllInventory() {
         return ResponseEntity.ok(inventoryService.viewAllInventory());
+    }
+
+    // POST /inventory/add?warehouseId={warehouseId}&productId={productId}&qty={qty}
+    @PostMapping("/add")
+    public ResponseEntity<Inventory> addStock(
+            @RequestParam @NotNull @Min(1) Long warehouseId,
+            @RequestParam @NotNull @Min(1) Long productId,
+            @RequestParam @Min(1) int qty
+    ) {
+        Inventory inv = inventoryService.addStock(warehouseId, productId, qty);
+        return ResponseEntity.status(HttpStatus.CREATED).body(inv);
     }
 
     // POST /inventory/reserve?productId={productId}&qty={qty}

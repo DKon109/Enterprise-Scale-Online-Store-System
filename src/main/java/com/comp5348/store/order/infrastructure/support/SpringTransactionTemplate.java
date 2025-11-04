@@ -3,6 +3,7 @@ package com.comp5348.store.order.infrastructure.support;
 import com.comp5348.store.order.application.support.TransactionTemplate;
 import java.util.Objects;
 import java.util.function.Supplier;
+import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 
 /**
@@ -11,6 +12,7 @@ import org.springframework.transaction.PlatformTransactionManager;
  * orchestrator. This keeps the application layer decoupled from Spring specifics while still
  * leveraging declarative transaction management.
  */
+@Component
 public class SpringTransactionTemplate implements TransactionTemplate {
 
     private final org.springframework.transaction.support.TransactionTemplate delegate;

@@ -2,6 +2,7 @@ package com.comp5348.bank.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.util.UUID;
 
 /**
@@ -13,5 +14,5 @@ public record PaymentTransactionRequest(
         @NotNull UUID orderId,
         Double amount,
         @NotBlank String type,
-        String idempotencyKey) {
+        @NotBlank @Size(max = 255) String idempotencyKey) {
 }

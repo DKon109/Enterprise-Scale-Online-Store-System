@@ -2,7 +2,6 @@ package com.comp5348.bank.model;
 
 import jakarta.persistence.*;
 import lombok.Getter;
-import lombok.Setter;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -26,7 +25,6 @@ public class PaymentTransaction {
     private String type;
 
     @Column
-    @Setter
     private String status;
 
     @Column
@@ -34,6 +32,24 @@ public class PaymentTransaction {
 
     @Column
     private UUID orderID;
+
+    // ===== NEW FIELDS FOR COMP5348 COMPLIANCE =====
+
+    /**
+     * Idempotency key for preventing duplicate payment processing.
+     * If same idempotencyKey is used, returns existing transaction instead of creating new one.
+     * Required by: §242 (Idempotency keys on all state-changing calls)
+     */
+    @Column(unique = true)
+    private String idempotencyKey;
+
+    /**
+     * Correlation ID for request tracing across services.
+     * Enables tracking a single order through Bank → DeliveryCo → Email services.
+     * Required by: §246, §292 (Correlation ID / Saga ID tracking through all events)
+     */
+    @Column
+    private String correlationId;
 
     public PaymentTransaction(Double amount, LocalDateTime timeStamp, String type, String status, UUID orderID) {
         this.amount = amount;
@@ -45,4 +61,16 @@ public class PaymentTransaction {
     }
 
     public PaymentTransaction() {}
+
+    public void setIdempotencyKey(String idempotencyKey) {
+        this.idempotencyKey = idempotencyKey;
+    }
+
+    public void setCorrelationId(String correlationId) {
+        this.correlationId = correlationId;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
 }

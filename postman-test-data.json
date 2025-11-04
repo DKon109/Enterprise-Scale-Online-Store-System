@@ -1,0 +1,199 @@
+{
+  "testData": [
+    {
+      "testName": "Test_Customer_Registration_1",
+      "customerId": "550e8400-e29b-41d4-a716-446655440001",
+      "customerUsername": "testuser_{{$timestamp}}",
+      "customerEmail": "testuser_{{$timestamp}}@example.com",
+      "customerPassword": "TestPass123"
+    },
+    {
+      "testName": "Test_Customer_Registration_2",
+      "customerId": "550e8400-e29b-41d4-a716-446655440002",
+      "customerUsername": "testuser2_{{$timestamp}}",
+      "customerEmail": "testuser2_{{$timestamp}}@example.com",
+      "customerPassword": "SecurePass456"
+    },
+    {
+      "testName": "Test_Product_Creation_1",
+      "productName": "Laptop_{{$timestamp}}",
+      "productPrice": 999.99,
+      "productDescription": "High-performance laptop for work and gaming"
+    },
+    {
+      "testName": "Test_Product_Creation_2",
+      "productName": "Wireless_Mouse_{{$timestamp}}",
+      "productPrice": 29.99,
+      "productDescription": "Ergonomic wireless mouse with USB receiver"
+    },
+    {
+      "testName": "Test_Product_Creation_3",
+      "productName": "USB_C_Cable_{{$timestamp}}",
+      "productPrice": 15.99,
+      "productDescription": "Fast charging USB-C cable 2 meters"
+    },
+    {
+      "testName": "Test_Product_Creation_4",
+      "productName": "Monitor_27_{{$timestamp}}",
+      "productPrice": 349.99,
+      "productDescription": "4K UHD 27-inch monitor with HDR support"
+    },
+    {
+      "testName": "Test_Warehouse_Creation_1",
+      "warehouseLocation": "Sydney_{{$timestamp}}",
+      "warehouseId": 1
+    },
+    {
+      "testName": "Test_Warehouse_Creation_2",
+      "warehouseLocation": "Melbourne_{{$timestamp}}",
+      "warehouseId": 2
+    },
+    {
+      "testName": "Test_Warehouse_Creation_3",
+      "warehouseLocation": "Brisbane_{{$timestamp}}",
+      "warehouseId": 3
+    },
+    {
+      "testName": "Test_Order_Place_1",
+      "customerId": "550e8400-e29b-41d4-a716-446655440001",
+      "orderId": "550e8400-e29b-41d4-a716-446655440001",
+      "itemId": 1,
+      "quantity": 2,
+      "warehouseId": 1,
+      "productId": 1
+    },
+    {
+      "testName": "Test_Order_Place_2",
+      "customerId": "550e8400-e29b-41d4-a716-446655440002",
+      "orderId": "550e8400-e29b-41d4-a716-446655440002",
+      "itemId": 2,
+      "quantity": 1,
+      "warehouseId": 1,
+      "productId": 2
+    },
+    {
+      "testName": "Test_Order_Place_3",
+      "customerId": "550e8400-e29b-41d4-a716-446655440001",
+      "orderId": "550e8400-e29b-41d4-a716-446655440001",
+      "itemId": 3,
+      "quantity": 3,
+      "warehouseId": 2,
+      "productId": 1
+    },
+    {
+      "testName": "Test_Fulfillment_Reserve_1",
+      "orderId": "550e8400-e29b-41d4-a716-446655440001",
+      "warehouseId": 1,
+      "productId": 1,
+      "quantity": 2,
+      "address": "123 Main St"
+    },
+    {
+      "testName": "Test_Fulfillment_Reserve_2",
+      "orderId": "550e8400-e29b-41d4-a716-446655440002",
+      "warehouseId": 1,
+      "productId": 2,
+      "quantity": 1,
+      "address": "456 Oak Ave"
+    },
+    {
+      "testName": "Test_Fulfillment_Reserve_3",
+      "orderId": "550e8400-e29b-41d4-a716-446655440001",
+      "warehouseId": 2,
+      "productId": 1,
+      "quantity": 3,
+      "address": "789 Pine Rd"
+    },
+    {
+      "testName": "Test_Delivery_Track_1",
+      "trackingNumber": "TRACK_FULL_001_{{$timestamp}}",
+      "orderId": "550e8400-e29b-41d4-a716-446655440001"
+    },
+    {
+      "testName": "Test_Delivery_Track_2",
+      "trackingNumber": "TRACK_FULL_002_{{$timestamp}}",
+      "orderId": "550e8400-e29b-41d4-a716-446655440002"
+    },
+    {
+      "testName": "Test_Delivery_Track_3",
+      "trackingNumber": "TRACK_FULL_003_{{$timestamp}}",
+      "orderId": "550e8400-e29b-41d4-a716-446655440001"
+    },
+    {
+      "testName": "Test_Product_Update_1",
+      "productId": 1,
+      "productName": "Gaming_Laptop_{{$timestamp}}",
+      "productPrice": 1299.99,
+      "productDescription": "High-performance gaming laptop with RTX 4090"
+    },
+    {
+      "testName": "Test_Product_Update_2",
+      "productId": 2,
+      "productName": "Wireless_Mouse_Pro_{{$timestamp}}",
+      "productPrice": 39.99,
+      "productDescription": "Advanced wireless mouse with precision tracking"
+    },
+    {
+      "testName": "Test_Auth_Customer_1",
+      "customerId": "550e8400-e29b-41d4-a716-446655440001",
+      "customerUsername": "customer",
+      "customerEmail": "customer@example.com",
+      "customerPassword": "COMP5348"
+    },
+    {
+      "testName": "Test_Full_Workflow_1",
+      "customerId": "550e8400-e29b-41d4-a716-446655440001",
+      "customerUsername": "customer",
+      "customerEmail": "customer@example.com",
+      "customerPassword": "COMP5348",
+      "productName": "Laptop_{{$timestamp}}",
+      "productPrice": 999.99,
+      "productDescription": "High-performance laptop",
+      "warehouseLocation": "Sydney_{{$timestamp}}",
+      "warehouseId": 1,
+      "quantity": 2,
+      "orderId": "550e8400-e29b-41d4-a716-446655440001",
+      "productId": 1,
+      "address": "123 Main St",
+      "trackingNumber": "TRACK_FULL_001_{{$timestamp}}",
+      "status": "PENDING"
+    },
+    {
+      "testName": "Test_Full_Workflow_2",
+      "customerId": "550e8400-e29b-41d4-a716-446655440002",
+      "customerUsername": "testuser_{{$timestamp}}",
+      "customerEmail": "testuser_{{$timestamp}}@example.com",
+      "customerPassword": "TestPass123",
+      "productName": "Wireless_Mouse_{{$timestamp}}",
+      "productPrice": 29.99,
+      "productDescription": "Ergonomic mouse",
+      "warehouseLocation": "Melbourne_{{$timestamp}}",
+      "warehouseId": 2,
+      "quantity": 5,
+      "orderId": "550e8400-e29b-41d4-a716-446655440002",
+      "productId": 2,
+      "address": "456 Oak Ave",
+      "trackingNumber": "TRACK_FULL_002_{{$timestamp}}",
+      "status": "RESERVED"
+    },
+    {
+      "testName": "Test_Full_Workflow_3",
+      "customerId": "550e8400-e29b-41d4-a716-446655440001",
+      "customerUsername": "customer",
+      "customerEmail": "customer@example.com",
+      "customerPassword": "COMP5348",
+      "productName": "USB_C_Cable_{{$timestamp}}",
+      "productPrice": 15.99,
+      "productDescription": "Fast charging cable",
+      "warehouseLocation": "Brisbane_{{$timestamp}}",
+      "warehouseId": 3,
+      "quantity": 10,
+      "orderId": "550e8400-e29b-41d4-a716-446655440001",
+      "productId": 3,
+      "address": "789 Pine Rd",
+      "trackingNumber": "TRACK_FULL_003_{{$timestamp}}",
+      "status": "COMMITTED"
+    }
+  ]
+}
+

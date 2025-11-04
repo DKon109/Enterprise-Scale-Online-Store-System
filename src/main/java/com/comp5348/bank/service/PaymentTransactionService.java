@@ -5,9 +5,11 @@ import com.comp5348.bank.model.PaymentTransaction;
 import com.comp5348.bank.repository.PaymentTransactionRepository;
 import jakarta.transaction.Transactional;
 import java.time.LocalDateTime;
+import java.util.Objects;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 /**
  * Business logic for creating and managing transactions.
@@ -22,41 +24,61 @@ public class PaymentTransactionService {
     }
 
     @Transactional
-    public PaymentTransactionDTO createPurchaseTransaction(UUID orderID, Double amount) {
-        // Perform a transaction between the customer and the store.
+    public TransactionResult createPurchaseTransaction(UUID orderID, Double amount, String idempotencyKey, String correlationId) {
+        validateOrder(orderID);
+        validateAmount(amount);
+        String resolvedIdempotencyKey = requireIdempotencyKey(idempotencyKey);
 
-        // Ensure amount is non-negative.
-        if (amount <= 0) {
-            throw new IllegalArgumentException("Amount must be greater than zero");
-        }
+        return paymentTransactionRepository.findByIdempotencyKey(resolvedIdempotencyKey)
+                .map(existing -> new TransactionResult(new PaymentTransactionDTO(existing), false))
+                .orElseGet(() -> {
+                    PaymentTransaction paymentTransaction = new PaymentTransaction(
+                            amount,
+                            LocalDateTime.now(),
+                            "Purchase",
+                            "Confirmed",
+                            orderID);
+                    paymentTransaction.setIdempotencyKey(resolvedIdempotencyKey);
+                    paymentTransaction.setCorrelationId(trimToNull(correlationId));
 
-        PaymentTransaction paymentTransaction = new PaymentTransaction(amount, LocalDateTime.now(), "Purchase", "Pending", orderID);
-        paymentTransactionRepository.save(paymentTransaction);
-        // Once transaction is created, this is where logic to determine whether transaction is successful would go.
-        // However, here we just update to confirmed and return to caller.
-        paymentTransaction.setStatus("Confirmed");
-        paymentTransactionRepository.save(paymentTransaction);
-        return new PaymentTransactionDTO(paymentTransaction);
+                    PaymentTransaction saved = paymentTransactionRepository.save(paymentTransaction);
+                    return new TransactionResult(new PaymentTransactionDTO(saved), true);
+                });
     }
 
     @Transactional
-    public PaymentTransactionDTO createRefundTransaction(UUID orderID, Double amount) {
-        // Perform a transaction that returns money to the customer from the store.
+    public TransactionResult createRefundTransaction(UUID orderID, Double amount, String idempotencyKey, String correlationId) {
+        validateOrder(orderID);
+        if (amount != null) {
+            validateAmount(amount);
+        }
+        String resolvedIdempotencyKey = requireIdempotencyKey(idempotencyKey);
 
-        Double resolvedAmount = resolveRefundAmount(orderID, amount);
+        return paymentTransactionRepository.findByIdempotencyKey(resolvedIdempotencyKey)
+                .map(existing -> new TransactionResult(new PaymentTransactionDTO(existing), false))
+                .orElseGet(() -> {
+                    Double resolvedAmount = resolveRefundAmount(orderID, amount);
 
-        PaymentTransaction paymentTransaction = new PaymentTransaction(resolvedAmount, LocalDateTime.now(), "Refund", "Pending", orderID);
-        paymentTransactionRepository.save(paymentTransaction);
+                    PaymentTransaction paymentTransaction = new PaymentTransaction(
+                            resolvedAmount,
+                            LocalDateTime.now(),
+                            "Refund",
+                            "Confirmed",
+                            orderID);
+                    paymentTransaction.setIdempotencyKey(resolvedIdempotencyKey);
+                    paymentTransaction.setCorrelationId(trimToNull(correlationId));
 
-        paymentTransaction.setStatus("Confirmed");
-        paymentTransactionRepository.save(paymentTransaction);
-
-        return new PaymentTransactionDTO(paymentTransaction);
+                    PaymentTransaction saved = paymentTransactionRepository.save(paymentTransaction);
+                    return new TransactionResult(new PaymentTransactionDTO(saved), true);
+                });
     }
 
     @Transactional
     public PaymentTransactionDTO getPaymentTransaction(Long transactionID) {
-        return new PaymentTransactionDTO(paymentTransactionRepository.getPaymentTransactionById(transactionID));
+        Objects.requireNonNull(transactionID, "transactionID must not be null");
+        return paymentTransactionRepository.findById(transactionID)
+                .map(PaymentTransactionDTO::new)
+                .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + transactionID));
     }
 
     /**
@@ -74,4 +96,32 @@ public class PaymentTransactionService {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Unable to determine refund amount for order " + orderID));
     }
+
+    private static void validateOrder(UUID orderID) {
+        if (orderID == null) {
+            throw new IllegalArgumentException("Order ID must not be null");
+        }
+    }
+
+    private static void validateAmount(Double amount) {
+        if (amount == null || amount <= 0) {
+            throw new IllegalArgumentException("Amount must be greater than zero");
+        }
+    }
+
+    private static String requireIdempotencyKey(String idempotencyKey) {
+        if (!StringUtils.hasText(idempotencyKey)) {
+            throw new IllegalArgumentException("Idempotency key is required");
+        }
+        return idempotencyKey.trim();
+    }
+
+    private static String trimToNull(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim();
+    }
+
+    public record TransactionResult(PaymentTransactionDTO transaction, boolean createdNew) {}
 }

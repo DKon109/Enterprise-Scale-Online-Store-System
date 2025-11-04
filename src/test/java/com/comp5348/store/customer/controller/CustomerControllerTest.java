@@ -1,17 +1,21 @@
 package com.comp5348.store.customer.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.any;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.comp5348.config.JwtTokenProvider;
 import com.comp5348.store.customer.controller.dto.CustomerResponse;
+import com.comp5348.store.customer.controller.dto.LoginRequest;
+import com.comp5348.store.customer.controller.dto.LoginResponse;
 import com.comp5348.store.customer.controller.dto.RegisterCustomerRequest;
 import com.comp5348.store.customer.exception.CustomerAlreadyExistsException;
+import com.comp5348.store.customer.exception.InvalidPasswordException;
 import com.comp5348.store.customer.model.Customer;
 import com.comp5348.store.customer.service.CustomerService;
 import java.security.Principal;
-import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,12 +23,19 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 @ExtendWith(MockitoExtension.class)
 class CustomerControllerTest {
 
     @Mock
     private CustomerService customerService;
+
+    @Mock
+    private JwtTokenProvider jwtTokenProvider;
+
+    @Mock
+    private PasswordEncoder passwordEncoder;
 
     @InjectMocks
     private CustomerController controller;
@@ -37,7 +48,6 @@ class CustomerControllerTest {
         request.setPassword("password123");
 
         UUID customerId = UUID.randomUUID();
-        Instant createdAt = Instant.now();
         Customer savedCustomer = new Customer(customerId, "john", "hashedPassword", "john@example.com");
 
         when(customerService.registerCustomer("john", "john@example.com", "password123"))
@@ -136,6 +146,49 @@ class CustomerControllerTest {
         controller.currentCustomer(principal);
 
         verify(customerService).getByUsername(username);
+    }
+
+    @Test
+    void loginReturnsTokenForValidCredentials() {
+        String username = "john";
+        String password = "password123";
+        String hashedPassword = "$2a$10$hashedPassword";
+        String token = "jwt.token.here";
+
+        LoginRequest request = new LoginRequest(username, password);
+        UUID customerId = UUID.randomUUID();
+        Customer customer = new Customer(customerId, username, hashedPassword, "john@example.com");
+
+        when(customerService.getByUsername(username)).thenReturn(customer);
+        when(jwtTokenProvider.generateToken(username)).thenReturn(token);
+
+        LoginResponse response = controller.login(request);
+
+        assertEquals(token, response.getToken());
+        assertEquals(username, response.getUsername());
+        assertEquals("Bearer", response.getType());
+        verify(customerService).getByUsername(username);
+        verify(customerService).validatePassword(password, hashedPassword);
+        verify(jwtTokenProvider).generateToken(username);
+    }
+
+    @Test
+    void loginThrowsExceptionForInvalidPassword() {
+        String username = "john";
+        String password = "wrongPassword";
+        String hashedPassword = "$2a$10$hashedPassword";
+
+        LoginRequest request = new LoginRequest(username, password);
+        UUID customerId = UUID.randomUUID();
+        Customer customer = new Customer(customerId, username, hashedPassword, "john@example.com");
+
+        when(customerService.getByUsername(username)).thenReturn(customer);
+        doThrow(new InvalidPasswordException()).when(customerService).validatePassword(password, hashedPassword);
+
+        assertThrows(InvalidPasswordException.class, () -> controller.login(request));
+
+        verify(customerService).getByUsername(username);
+        verify(customerService).validatePassword(password, hashedPassword);
     }
 }
 
