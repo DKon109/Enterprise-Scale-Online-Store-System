@@ -4,11 +4,10 @@ import com.comp5348.bank.dto.PaymentTransactionDTO;
 import com.comp5348.bank.model.PaymentTransaction;
 import com.comp5348.bank.repository.PaymentTransactionRepository;
 import jakarta.transaction.Transactional;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-
 import java.time.LocalDateTime;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
 /**
  * Business logic for creating and managing transactions.
@@ -44,11 +43,9 @@ public class PaymentTransactionService {
     public PaymentTransactionDTO createRefundTransaction(UUID orderID, Double amount) {
         // Perform a transaction that returns money to the customer from the store.
 
-        if (amount <= 0){
-            throw new IllegalArgumentException("Amount must be greater than zero");
-        }
+        Double resolvedAmount = resolveRefundAmount(orderID, amount);
 
-        PaymentTransaction paymentTransaction = new PaymentTransaction(amount, LocalDateTime.now(), "Refund", "Pending", orderID);
+        PaymentTransaction paymentTransaction = new PaymentTransaction(resolvedAmount, LocalDateTime.now(), "Refund", "Pending", orderID);
         paymentTransactionRepository.save(paymentTransaction);
 
         paymentTransaction.setStatus("Confirmed");
@@ -60,5 +57,21 @@ public class PaymentTransactionService {
     @Transactional
     public PaymentTransactionDTO getPaymentTransaction(Long transactionID) {
         return new PaymentTransactionDTO(paymentTransactionRepository.getPaymentTransactionById(transactionID));
+    }
+
+    /**
+     * Resolve the refund amount. If the caller supplies a positive amount use it,
+     * otherwise fall back to the most recent purchase recorded for the order.
+     */
+    private Double resolveRefundAmount(UUID orderID, Double amount) {
+        if (amount != null && amount > 0) {
+            return amount;
+        }
+
+        return paymentTransactionRepository
+                .findTopByOrderIDAndTypeOrderByTimeStampDesc(orderID, "Purchase")
+                .map(PaymentTransaction::getAmount)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Unable to determine refund amount for order " + orderID));
     }
 }
