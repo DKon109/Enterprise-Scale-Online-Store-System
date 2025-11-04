@@ -1,90 +1,62 @@
 package com.comp5348.messaging.email;
 
 import com.comp5348.messaging.events.EventMessage;
+import com.comp5348.store.order.model.OutboxEvent;
+import com.comp5348.store.order.repository.OutboxRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.HashMap;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
 /**
- * Listens to email_queue and processes email notification events.
+ * Listens to email_queue and persists notification events in the Outbox table.
  *
- * IMPORTANT: This listener does NOT send emails directly.
- * Instead, it writes to the Outbox table for reliable delivery.
- *
- * Why Outbox Pattern?
- * - If we send email directly and fail, the message is lost
- * - If we write to Outbox first, we can retry later
- * - OutboxWorker processes the Outbox table every 5 seconds
- *
- * Event Flow:
- * 1. OrderOrchestrator publishes event to email_queue
- * 2. This listener receives the event
- * 3. This listener writes to Outbox table (NOT sending email yet)
- * 4. OutboxWorker picks up the Outbox record
- * 5. OutboxWorker calls Email service via HTTP
- * 6. OutboxWorker marks as sent
- *
- * Compliance: §79-80 (Reliable asynchronous messaging), §77 (Data integrity)
+ * OutboxWorker later delivers them to the Email service, ensuring reliable dispatch.
  */
 @Component
 public class EmailMessageListener {
 
     private static final Logger log = LoggerFactory.getLogger(EmailMessageListener.class);
 
-    // TODO: Inject OutboxRepository when Outbox infrastructure is created
-    // private final OutboxRepository outboxRepository;
+    private final OutboxRepository outboxRepository;
+    private final ObjectMapper objectMapper;
 
-    public EmailMessageListener() {
-        // TODO: Add OutboxRepository constructor injection
+    public EmailMessageListener(OutboxRepository outboxRepository, ObjectMapper objectMapper) {
+        this.outboxRepository = outboxRepository;
+        this.objectMapper = objectMapper;
     }
 
-    /**
-     * Process email notification events from email_queue.
-     *
-     * This listener writes events to Outbox table instead of sending emails directly.
-     * This ensures reliable delivery even if Email service is temporarily unavailable.
-     *
-     * @param event The email notification event from RabbitMQ
-     */
     @RabbitListener(queues = "email_queue")
     public void onMessage(EventMessage event) {
-        try {
-            String correlationId = event.getCorrelationId() != null ? event.getCorrelationId() : "N/A";
-
-            log.info("[Email] 📧 Received email event: {} for order {} | To: {} | Correlation: {}",
+        String correlationId = event.getCorrelationId() != null ? event.getCorrelationId() : "N/A";
+        log.info("[Email] 📧 Received email event: {} for order {} | To: {} | Correlation: {}",
                 event.getType(), event.getOrderId(), event.getCustomerEmail(), correlationId);
 
-            // TODO: Implement Outbox pattern
-            // 1. Create OutboxEvent from EventMessage
-            // 2. Save to Outbox table
-            // 3. OutboxWorker will process it later
-
-            /*
-            OutboxEvent outboxEvent = new OutboxEvent(
-                event.getOrderId(),
-                event.getType(),
-                event.getCustomerEmail(),
-                event.getDescription(),
-                false  // not sent yet
-            );
-            outboxEvent.setCorrelationId(correlationId);
-            outboxEvent.setRetryCount(0);
-            outboxEvent.setCreatedAt(LocalDateTime.now());
-
+        try {
+            String payload = buildPayload(event, correlationId);
+            OutboxEvent outboxEvent = new OutboxEvent(event.getOrderId(), event.getType(), payload);
             outboxRepository.save(outboxEvent);
             log.info("[Email] ✅ Email event queued to Outbox for order {}", event.getOrderId());
-            */
-
-            // TEMPORARY: Log instead of sending (until Outbox is implemented)
-            log.info("[Email] [TEMP] Would send email to {} | Subject: {} | Message: {}",
-                event.getCustomerEmail(), event.getType(), event.getDescription());
-
         } catch (Exception e) {
             log.error("[Email] Error processing email event: {} for order {}. Correlation ID: {}. Error: {}",
-                event.getType(), event.getOrderId(), event.getCorrelationId(), e.getMessage(), e);
-            // Exception will trigger DLQ retry logic
+                    event.getType(), event.getOrderId(), correlationId, e.getMessage(), e);
             throw new RuntimeException("Failed to process email event", e);
         }
+    }
+
+    private String buildPayload(EventMessage event, String correlationId) throws JsonProcessingException {
+        Map<String, String> payload = new HashMap<>();
+        if (event.getCustomerEmail() != null) {
+            payload.put("customerEmail", event.getCustomerEmail());
+        }
+        if (event.getDescription() != null) {
+            payload.put("description", event.getDescription());
+        }
+        payload.put("correlationId", correlationId);
+        return payload.isEmpty() ? "{}" : objectMapper.writeValueAsString(payload);
     }
 }
