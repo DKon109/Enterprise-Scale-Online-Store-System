@@ -199,6 +199,46 @@ class PaymentTransactionServiceTest {
     }
 
     @Test
+    void createRefundTransactionUsesProvidedAmountWhenPositive() {
+        UUID orderId = UUID.randomUUID();
+        when(paymentTransactionRepository.findByIdempotencyKey("refund-provided"))
+                .thenReturn(Optional.empty());
+
+        ArgumentCaptor<PaymentTransaction> captor = ArgumentCaptor.forClass(PaymentTransaction.class);
+        when(paymentTransactionRepository.save(captor.capture()))
+                .thenAnswer(invocation -> {
+                    PaymentTransaction entity = invocation.getArgument(0);
+                    setField(entity, "id", 123L);
+                    return entity;
+                });
+
+        PaymentTransactionService.TransactionResult result = service.createRefundTransaction(
+                orderId, 33.5, "refund-provided", "corr-provided");
+
+        assertTrue(result.createdNew());
+        PaymentTransaction persisted = captor.getValue();
+        assertEquals(33.5, persisted.getAmount());
+        assertEquals("Refund", persisted.getType());
+        assertEquals("refund-provided", persisted.getIdempotencyKey());
+
+        ArgumentCaptor<PaymentTransaction> eventCaptor = ArgumentCaptor.forClass(PaymentTransaction.class);
+        verify(bankMessageProducer).publishTransactionEvent(eventCaptor.capture(), eq("refund.completed"));
+        assertSame(persisted, eventCaptor.getValue());
+    }
+
+    @Test
+    void createRefundTransactionRejectsNonPositiveAmount() {
+        UUID orderId = UUID.randomUUID();
+
+        IllegalArgumentException ex = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.createRefundTransaction(orderId, 0.0, "refund-invalid", null));
+
+        assertEquals("Amount must be greater than zero", ex.getMessage());
+        verifyNoInteractions(paymentTransactionRepository, bankMessageProducer);
+    }
+
+    @Test
     void getPaymentTransactionReturnsDtoWhenFound() {
         PaymentTransaction entity = new PaymentTransaction(60.0, LocalDateTime.now(), "Purchase", "Confirmed", UUID.randomUUID());
         entity.setIdempotencyKey("id-1");
