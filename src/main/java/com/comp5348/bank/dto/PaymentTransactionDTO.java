@@ -29,6 +29,7 @@ public class PaymentTransactionDTO {
         this.type = entity.getType();
         this.status = entity.getStatus();
         this.bankReferenceID = entity.getBankReferenceID();
+        this.time = entity.getTimeStamp();
         this.orderID = entity.getOrderID();
     }
 }
