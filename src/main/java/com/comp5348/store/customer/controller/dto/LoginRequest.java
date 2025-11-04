@@ -1,21 +1,19 @@
 package com.comp5348.store.customer.controller.dto;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 
+/**
+ * Login request DTO for JWT authentication.
+ */
 public class LoginRequest {
 
-    @NotBlank
-    @Size(max = 64)
+    @NotBlank(message = "Username is required")
     private String username;
 
-    @NotBlank
-    @Size(min = 6, max = 128)
+    @NotBlank(message = "Password is required")
     private String password;
 
-    public LoginRequest() {
-        // For JSON binding
-    }
+    public LoginRequest() {}
 
     public LoginRequest(String username, String password) {
         this.username = username;

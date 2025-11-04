@@ -1,18 +1,16 @@
 package com.comp5348.store.customer.controller.dto;
 
+/**
+ * Login response DTO containing JWT token.
+ */
 public class LoginResponse {
 
     private String token;
-    private String type;
+    private String type = "Bearer";
     private String username;
 
-    public LoginResponse() {
-        // For JSON binding
-    }
-
-    public LoginResponse(String token, String type, String username) {
+    public LoginResponse(String token, String username) {
         this.token = token;
-        this.type = type;
         this.username = username;
     }
 

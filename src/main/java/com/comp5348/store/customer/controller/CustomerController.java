@@ -16,7 +16,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/customers")
@@ -25,7 +24,9 @@ public class CustomerController {
     private final CustomerService customerService;
     private final JwtTokenProvider jwtTokenProvider;
 
-    public CustomerController(CustomerService customerService, JwtTokenProvider jwtTokenProvider) {
+    public CustomerController(
+            CustomerService customerService,
+            JwtTokenProvider jwtTokenProvider) {
         this.customerService = customerService;
         this.jwtTokenProvider = jwtTokenProvider;
     }
@@ -38,20 +39,17 @@ public class CustomerController {
         return CustomerResponse.from(customer);
     }
 
-    @GetMapping("/me")
-    public CustomerResponse currentCustomer(Principal principal) {
-        if (principal == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
-        }
-        Customer customer = customerService.getByUsername(principal.getName());
-        return CustomerResponse.from(customer);
-    }
-
     @PostMapping("/login")
     public LoginResponse login(@Valid @RequestBody LoginRequest request) {
         Customer customer = customerService.getByUsername(request.getUsername());
         customerService.validatePassword(request.getPassword(), customer.getPasswordHash());
-        String token = jwtTokenProvider.generateToken(request.getUsername());
-        return new LoginResponse(token, "Bearer", request.getUsername());
+        String token = jwtTokenProvider.generateToken(customer.getUsername());
+        return new LoginResponse(token, customer.getUsername());
+    }
+
+    @GetMapping("/me")
+    public CustomerResponse currentCustomer(Principal principal) {
+        Customer customer = customerService.getByUsername(principal.getName());
+        return CustomerResponse.from(customer);
     }
 }
