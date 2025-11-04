@@ -80,4 +80,19 @@ class PaymentTransactionRepositoryTest {
 
         assertEquals(initialVersion + 1, updated.getVersion());
     }
+
+    @Test
+    void saveRefundTransactionPersistsWithCorrelation() {
+        UUID orderId = UUID.randomUUID();
+        PaymentTransaction refund = new PaymentTransaction(45.0, LocalDateTime.now(), "Refund", "Confirmed", orderId);
+        refund.setIdempotencyKey("refund-key");
+        refund.setCorrelationId("corr-refund");
+
+        PaymentTransaction persisted = repository.save(refund);
+
+        Optional<PaymentTransaction> retrieved = repository.findById(persisted.getId());
+        assertTrue(retrieved.isPresent());
+        assertEquals("Refund", retrieved.get().getType());
+        assertEquals("corr-refund", retrieved.get().getCorrelationId());
+    }
 }

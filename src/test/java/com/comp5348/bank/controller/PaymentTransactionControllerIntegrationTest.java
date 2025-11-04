@@ -100,5 +100,30 @@ class PaymentTransactionControllerIntegrationTest {
         org.junit.jupiter.api.Assertions.assertEquals(1L, count);
     }
 
+    @Test
+    void refundTransactionCreatesRecordAndPublishesRefundEvent() throws Exception {
+        PaymentPayload payload = new PaymentPayload(orderId, 55.0, "Refund", "integration-refund-001");
+
+        mockMvc.perform(post("/transactions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Correlation-ID", "corr-refund-int")
+                        .content(objectMapper.writeValueAsString(payload)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.type", is("Refund")))
+                .andExpect(jsonPath("$.status", is("Confirmed")))
+                .andExpect(jsonPath("$.idempotencyKey", is("integration-refund-001")));
+
+        assert repository.findByIdempotencyKey("integration-refund-001").isPresent();
+
+        ArgumentCaptor<com.comp5348.messaging.events.EventMessage> captor = ArgumentCaptor.forClass(com.comp5348.messaging.events.EventMessage.class);
+        verify(rabbitTemplate, times(1)).convertAndSend(eq(RabbitMQConfig.BANK_QUEUE), captor.capture());
+
+        com.comp5348.messaging.events.EventMessage message = captor.getValue();
+        org.junit.jupiter.api.Assertions.assertEquals("refund.completed", message.getType());
+        org.junit.jupiter.api.Assertions.assertEquals(orderId, message.getOrderId());
+        org.junit.jupiter.api.Assertions.assertEquals("integration-refund-001", message.getIdempotencyKey());
+        org.junit.jupiter.api.Assertions.assertEquals("corr-refund-int", message.getCorrelationId());
+    }
+
     private record PaymentPayload(UUID orderId, Double amount, String type, String idempotencyKey) {}
 }
