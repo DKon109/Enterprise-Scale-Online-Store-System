@@ -9,6 +9,7 @@ import com.comp5348.store.order.application.port.PaymentServicePort;
 import com.comp5348.store.order.application.port.ShippingServicePort;
 import com.comp5348.store.order.application.support.TransactionTemplate;
 import com.comp5348.store.order.application.util.IdempotencyKeyGenerator;
+import com.comp5348.store.order.exception.OrderNotFoundException;
 import com.comp5348.store.order.infrastructure.logging.InterServiceCallLogger;
 import com.comp5348.store.order.model.Money;
 import com.comp5348.store.order.model.Order;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import org.springframework.util.StringUtils;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -62,17 +64,38 @@ public class OrderOrchestrator {
     }
 
     public UUID placeOrder(UUID customerId, String itemId, int quantity) {
-        return placeOrder(customerId, itemId, quantity, null);
+        return placeOrder(customerId, itemId, quantity, null, null);
     }
 
     public UUID placeOrder(UUID customerId, String itemId, int quantity, String correlationId) {
+        return placeOrder(customerId, itemId, quantity, correlationId, null);
+    }
+
+    public UUID placeOrder(UUID customerId, String itemId, int quantity, String correlationId, String requestId) {
+        String normalisedCorrelationId = normalise(correlationId);
+        String normalisedRequestId = normalise(requestId);
+
+        if (normalisedRequestId != null) {
+            return orders.findByRequestId(normalisedRequestId)
+                    .map(Order::getOrderId)
+                    .orElseGet(() -> createAndProcessOrder(customerId, itemId, quantity, normalisedCorrelationId, normalisedRequestId));
+        }
+
+        return createAndProcessOrder(customerId, itemId, quantity, normalisedCorrelationId, null);
+    }
+
+    private UUID createAndProcessOrder(UUID customerId, String itemId, int quantity, String correlationId, String requestId) {
         UUID orderId = UUID.randomUUID();
         Order order = new Order(orderId, customerId, itemId, quantity);
+        order.setCorrelationId(correlationId);
+        order.setRequestId(requestId);
 
-        transactions.execute(() -> {
-            orders.save(order);
-        });
+        transactions.execute(() -> orders.save(order));
+        return processNewOrder(order, correlationId);
+    }
 
+    private UUID processNewOrder(Order order, String correlationId) {
+        UUID orderId = order.getOrderId();
         List<InventoryServicePort.Allocation> allocations;
         try {
             allocations = executeWithRetryAndLogging(
@@ -80,7 +103,7 @@ public class OrderOrchestrator {
                     orderId,
                     correlationId,
                     () -> {
-                        InventoryServicePort.ReserveResult result = inventory.reserve(orderId, itemId, quantity);
+                        InventoryServicePort.ReserveResult result = inventory.reserve(orderId, order.getItemId(), order.getQuantity());
                         if (!result.isSuccess()) {
                             throw new IllegalStateException("Stock reservation failed: " + result.reason());
                         }
@@ -99,7 +122,7 @@ public class OrderOrchestrator {
             orders.save(order);
         });
 
-        Money totalAmount = Money.of(quantity);
+        Money totalAmount = Money.of(order.getQuantity());
         String idempotencyKey = IdempotencyKeyGenerator.forOrder(orderId);
 
         PaymentServicePort.PaymentResult paymentResult = invokeWithCircuitBreaker(() ->
@@ -107,7 +130,7 @@ public class OrderOrchestrator {
                         "AuthorizePayment",
                         orderId,
                         correlationId,
-                        () -> payments.authorize(orderId, totalAmount, idempotencyKey),
+                        () -> payments.authorize(orderId, totalAmount, idempotencyKey, correlationId, order.getRequestId()),
                         "Payment authorization exhausted"));
 
         if (!paymentResult.isAuthorized()) {
@@ -116,9 +139,7 @@ public class OrderOrchestrator {
         }
 
         order.markPaid();
-        transactions.execute(() -> {
-            orders.save(order);
-        });
+        transactions.execute(() -> orders.save(order));
 
         ShippingServicePort.ShipmentResult shipmentResult;
         try {
@@ -139,9 +160,7 @@ public class OrderOrchestrator {
         }
 
         order.markShipmentRequested();
-        transactions.execute(() -> {
-            orders.save(order);
-        });
+        transactions.execute(() -> orders.save(order));
 
         return orderId;
     }
@@ -165,7 +184,7 @@ public class OrderOrchestrator {
         }
 
         if (order.getStatus() == Order.Status.PAID) {
-            invokeAndLog("RefundPayment", orderId, correlationId, () -> payments.refund(orderId));
+            PaymentServicePort.PaymentResult refundResult = invokeRefund(orderId, correlationId, order.getRequestId());
         }
         invokeAndLog("ReleaseStock", orderId, correlationId, () -> inventory.release(orderId));
 
@@ -204,11 +223,11 @@ public class OrderOrchestrator {
     }
 
     private void handleShipmentFailure(Order order, String reason, String correlationId) {
-        invokeAndLog("RefundPayment", order.getOrderId(), correlationId, () -> payments.refund(order.getOrderId()));
+        PaymentServicePort.PaymentResult refundResult = invokeRefund(order.getOrderId(), correlationId, order.getRequestId());
         invokeAndLog("ReleaseStock", order.getOrderId(), correlationId, () -> inventory.release(order.getOrderId()));
 
         transactions.execute(() -> {
-            order.cancel();
+            order.markShipmentFailed();
             orders.save(order);
         });
 
@@ -272,6 +291,19 @@ public class OrderOrchestrator {
         return (System.nanoTime() - startNano) / 1_000_000;
     }
 
+    private PaymentServicePort.PaymentResult invokeRefund(UUID orderId, String correlationId, String requestId) {
+        long start = System.nanoTime();
+        try {
+            PaymentServicePort.PaymentResult result = payments.refund(orderId, correlationId, requestId);
+            String outcome = result.isAuthorized() ? "SUCCESS" : "FAILED";
+            callLogger.log(orderId, correlationId, "RefundPayment", 1, toMillis(start), outcome);
+            return result;
+        } catch (RuntimeException ex) {
+            callLogger.log(orderId, correlationId, "RefundPayment", 1, toMillis(start), "FAILED");
+            throw ex;
+        }
+    }
+
     private String extractFailureReason(Throwable error) {
         if (error == null) {
             return null;
@@ -301,6 +333,13 @@ public class OrderOrchestrator {
 
     private Order getOrderRequired(UUID orderId) {
         return orders.findById(orderId)
-                .orElseThrow(() -> new IllegalArgumentException("Order %s not found".formatted(orderId)));
+                .orElseThrow(() -> new OrderNotFoundException(orderId));
+    }
+
+    private String normalise(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim();
     }
 }

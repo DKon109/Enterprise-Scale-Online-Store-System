@@ -1,10 +1,13 @@
 package com.comp5348.messaging.bank;
 
+import com.comp5348.messaging.config.RabbitMQConfig;
 import com.comp5348.messaging.events.EventMessage;
+import java.time.LocalDateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.comp5348.bank.service.PaymentTransactionService;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 
 /**
@@ -21,9 +24,11 @@ public class BankMessageListener {
 
     private static final Logger log = LoggerFactory.getLogger(BankMessageListener.class);
     private final PaymentTransactionService paymentTransactionService;
+    private final RabbitTemplate rabbitTemplate;
 
-    public BankMessageListener(PaymentTransactionService paymentTransactionService) {
+    public BankMessageListener(PaymentTransactionService paymentTransactionService, RabbitTemplate rabbitTemplate) {
         this.paymentTransactionService = paymentTransactionService;
+        this.rabbitTemplate = rabbitTemplate;
     }
 
     /**
@@ -94,7 +99,25 @@ public class BankMessageListener {
         log.info("[Bank] 💸 Refund COMPLETED for order {} | Amount: {} | Correlation: {}",
             event.getOrderId(), event.getAmount(), correlationId);
 
-        // Optional: Update internal state or audit log
-        // Example: paymentTransactionService.recordRefund(event.getOrderId());
+        EventMessage notificationEvent = new EventMessage();
+        notificationEvent.setType("REFUND_COMPLETED");
+        notificationEvent.setOrderId(event.getOrderId());
+        notificationEvent.setAmount(event.getAmount());
+        notificationEvent.setDescription(resolveRefundDescription(event));
+        notificationEvent.setCorrelationId(correlationId);
+        notificationEvent.setIdempotencyKey(event.getIdempotencyKey());
+        notificationEvent.setTimestamp(event.getTimestamp() != null ? event.getTimestamp() : LocalDateTime.now());
+        notificationEvent.setRetryCount(event.getRetryCount());
+        notificationEvent.setCustomerEmail(event.getCustomerEmail());
+
+        rabbitTemplate.convertAndSend(RabbitMQConfig.EMAIL_QUEUE, notificationEvent);
+        log.debug("[Bank] Forwarded refund completion for order {} to {}", event.getOrderId(), RabbitMQConfig.EMAIL_QUEUE);
+    }
+
+    private String resolveRefundDescription(EventMessage event) {
+        if (event.getDescription() != null && !event.getDescription().trim().isEmpty()) {
+            return event.getDescription();
+        }
+        return "Refund completed for order " + event.getOrderId();
     }
 }

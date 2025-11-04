@@ -52,6 +52,12 @@ public class Order {
     @Column(nullable = false)
     private String status;
 
+    @Column(name = "correlation_id", length = 64)
+    private String correlationId;
+
+    @Column(name = "request_id", length = 64, unique = true)
+    private String requestId;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -114,6 +120,15 @@ public class Order {
         transitionTo(Status.DELIVERED);
     }
 
+    /**
+     * Record a shipment failure while keeping the order in PAID status.
+     * Updates the timestamp so downstream consumers can detect the change.
+     */
+    public void markShipmentFailed() {
+        ensureStatus(Status.PAID);
+        this.updatedAt = Instant.now();
+    }
+
     public void cancel() {
         if (!canCancel()) {
             throw new IllegalStateException("Order cannot be cancelled from status " + status);
@@ -169,5 +184,29 @@ public class Order {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public String getCorrelationId() {
+        return correlationId;
+    }
+
+    public void setCorrelationId(String correlationId) {
+        this.correlationId = normalise(correlationId);
+    }
+
+    public String getRequestId() {
+        return requestId;
+    }
+
+    public void setRequestId(String requestId) {
+        this.requestId = normalise(requestId);
+    }
+
+    private String normalise(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }
