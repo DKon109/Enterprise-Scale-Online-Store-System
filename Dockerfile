@@ -1,4 +1,4 @@
-FROM gradle:8.9.0-jdk17-alpine AS build
+FROM gradle:8.9.0-jdk17 AS build
 WORKDIR /home/gradle/app
 
 # Copy Gradle wrapper and build scripts first for better layer caching
@@ -15,7 +15,7 @@ RUN chmod +x gradlew && \
     mkdir -p build/output && \
     cp "${JAR_PATH}" build/output/app.jar
 
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 
 COPY --from=build /home/gradle/app/build/output/app.jar ./app.jar
