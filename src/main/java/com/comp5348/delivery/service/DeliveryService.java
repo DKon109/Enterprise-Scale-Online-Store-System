@@ -4,40 +4,50 @@ import com.comp5348.delivery.model.Delivery;
 import com.comp5348.delivery.repository.DeliveryRepository;
 import com.comp5348.store.order.model.Order;
 import com.comp5348.store.order.repository.OrderRepository;
+import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-
-
 
 /**
  * Business Logic for managing delivery lifecycle
  * Called from Order and Fulfilment workflows.
  */
-
 @Service
 public class DeliveryService {
-    private  final DeliveryRepository deliveryRepository;
+
+    private static final Logger log = LoggerFactory.getLogger(DeliveryService.class);
+
+    private final DeliveryRepository deliveryRepository;
     private final OrderRepository orderRepository;
     private final Random random = new Random();
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    private final double lossDuringPickupProbability = 0.0;
+    private final double lossDuringTransitProbability = 0.05;
 
-    public DeliveryService(DeliveryRepository deliveryRepository, OrderRepository orderRepository) {
+    public DeliveryService(
+            DeliveryRepository deliveryRepository,
+            OrderRepository orderRepository) {
         this.deliveryRepository = deliveryRepository;
         this.orderRepository = orderRepository;
     }
 
-
     /**
-     * Create a new delivery
-     * Basically it is called after warehouse and inventory confirmation
-     * After ~5 seconds, automatically mark as DISPATCHED, with ~5% chance of being lost (CANCELLED).
+     * Create a new delivery.
+     * At this point we keep the delivery in PENDING state. Once DeliveryCo acknowledges
+     * the shipment (webhook), we schedule a follow-up that either dispatches the parcel
+     * or marks it lost (5% chance) after a short delay.
      */
     @Transactional
     public Delivery createDelivery(UUID orderId, Long warehouseId, String address, String trackingNumber) {
@@ -45,52 +55,71 @@ public class DeliveryService {
                 .orElseThrow(() -> new IllegalArgumentException("Order not found: " + orderId));
 
         Delivery delivery = new Delivery(order, warehouseId, address, trackingNumber);
-        Delivery saved = deliveryRepository.save(delivery);
-
-        //update the status automatically after 5 sec (5% failure)
-
-        Executors.newSingleThreadScheduledExecutor().schedule(() -> {
-            try {
-                Optional<Delivery> opt = deliveryRepository.findById(saved.getId());
-                if (opt.isPresent()) {
-                    Delivery d = opt.get();
-
-                    // 5% failure
-                    if (random.nextDouble() < 0.5) { //50% chance of failure
-                        d.cancel(); //fail
-                    } else {
-                        d.markDispatched(); // dispatched from the stock
-                    }
-                    deliveryRepository.save(d);
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }, 5, TimeUnit.SECONDS);
-
-        return saved;
+        return deliveryRepository.save(delivery);
     }
 
-
-
-    /** retrieve the all deliveries associated with the same order
+    /**
+     * Triggered when DeliveryCo acknowledges the shipment request.
+     * Schedules a follow-up status update ~5 seconds later with 5% simulated loss.
      */
+    public void schedulePostAcknowledgementUpdate(UUID orderId, String trackingNumber) {
+        Optional<Delivery> deliveryOpt = resolveDelivery(orderId, trackingNumber);
+        if (deliveryOpt.isEmpty()) {
+            log.warn("No delivery found to schedule acknowledgement update (orderId={}, tracking={})",
+                    orderId, trackingNumber);
+            return;
+        }
+
+        Delivery delivery = deliveryOpt.get();
+        if (delivery.getStatus() != Delivery.Status.PENDING) {
+            log.debug("Delivery {} already advanced to {} — skipping acknowledgement scheduling",
+                    delivery.getId(), delivery.getStatus());
+            return;
+        }
+
+        scheduler.schedule(() -> {
+            try {
+                deliveryRepository.findById(delivery.getId()).ifPresent(latest -> {
+                    if (latest.getStatus() != Delivery.Status.PENDING) {
+                        return;
+                    }
+                    latest.markDispatched();
+                    deliveryRepository.save(latest);
+                    log.info("Delivery {} marked as DISPATCHED after acknowledgement", latest.getId());
+                });
+            } catch (Exception ex) {
+                log.error("Failed to update delivery {} after acknowledgement", delivery.getId(), ex);
+            }
+        }, 5, TimeUnit.SECONDS);
+    }
+
+    private Optional<Delivery> resolveDelivery(UUID orderId, String trackingNumber) {
+        if (StringUtils.hasText(trackingNumber)) {
+            Optional<Delivery> byTracking = deliveryRepository.findByTrackingNumber(trackingNumber.trim());
+            if (byTracking.isPresent()) {
+                return byTracking;
+            }
+        }
+        List<Delivery> deliveries = deliveryRepository.findByOrder_OrderId(orderId);
+        if (deliveries.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(deliveries.get(0));
+    }
+
+    /** retrieve all deliveries associated with the same order */
     @Transactional(readOnly = true)
     public List<Delivery> getDeliveriesByOrderId(UUID orderId) {
         return deliveryRepository.findByOrder_OrderId(orderId);
     }
 
-    /**
-     * Retrieve the delivery by tracking number
-     */
+    /** Retrieve the delivery by tracking number */
     @Transactional(readOnly = true)
     public Optional<Delivery> getByTrackingNumber(String trackingNumber) {
         return deliveryRepository.findByTrackingNumber(trackingNumber);
     }
 
-    /**
-     * Update the delivery status to DISPATCHED and record timestamp
-     */
+    /** Update the delivery status to DISPATCHED and record timestamp */
     @Transactional
     public boolean markDispatched(Long deliveryId) {
         Optional<Delivery> opt = deliveryRepository.findById(deliveryId);
@@ -103,8 +132,7 @@ public class DeliveryService {
         return true;
     }
 
-    /**Update the delivery status to DELIVERED
-     */
+    /** Update the delivery status to DELIVERED */
     @Transactional
     public boolean markDelivered(Long deliveryId) {
         Optional<Delivery> opt = deliveryRepository.findById(deliveryId);
@@ -117,9 +145,7 @@ public class DeliveryService {
         return true;
     }
 
-    /**
-     * Cancel an existing delivery
-     */
+    /** Cancel an existing delivery */
     @Transactional
     public boolean cancelDelivery(Long deliveryId) {
         Optional<Delivery> opt = deliveryRepository.findById(deliveryId);
@@ -132,8 +158,7 @@ public class DeliveryService {
         return true;
     }
 
-    /** Lightweight check to confirm if a delivery exists for a given order
-     */
+    /** Lightweight check to confirm if a delivery exists for a given order */
     @Transactional(readOnly = true)
     public boolean hasDeliveryForOrder(UUID orderId) {
         return deliveryRepository.existsByOrder_OrderId(orderId);
@@ -141,12 +166,26 @@ public class DeliveryService {
 
     @Transactional
     public boolean markPickedUp(String trackingNumber) {
-        return updateStatusByTracking(trackingNumber, Delivery::markDispatched);
+        return updateStatusByTracking(trackingNumber, delivery -> {
+            if (shouldLosePackage(lossDuringPickupProbability)) {
+                delivery.cancel();
+                log.info("Delivery {} marked as CANCELLED during pickup (simulated loss)", delivery.getId());
+            } else {
+                delivery.markInTransit();
+            }
+        });
     }
 
     @Transactional
     public boolean markInTransit(String trackingNumber) {
-        return updateStatusByTracking(trackingNumber, Delivery::markInTransit);
+        return updateStatusByTracking(trackingNumber, delivery -> {
+            if (shouldLosePackage(lossDuringTransitProbability)) {
+                delivery.cancel();
+                log.info("Delivery {} marked as CANCELLED in transit (simulated loss)", delivery.getId());
+            } else {
+                delivery.markInTransit();
+            }
+        });
     }
 
     @Transactional
@@ -168,4 +207,12 @@ public class DeliveryService {
         return true;
     }
 
+    private boolean shouldLosePackage(double probability) {
+        return probability > 0 && random.nextDouble() < probability;
+    }
+
+    @PreDestroy
+    public void shutdownScheduler() {
+        scheduler.shutdownNow();
+    }
 }

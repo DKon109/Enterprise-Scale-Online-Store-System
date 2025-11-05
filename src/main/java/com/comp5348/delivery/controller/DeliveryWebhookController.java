@@ -41,6 +41,7 @@ public class DeliveryWebhookController {
     public ResponseEntity<WebhookResponse> requestReceived(
             @RequestHeader(value = "X-Correlation-ID", required = false) String correlationId,
             @Valid @RequestBody DeliveryWebhookRequest payload) {
+        deliveryService.schedulePostAcknowledgementUpdate(payload.orderId(), payload.trackingNumber());
         sendNotification(payload, "REQUEST_RECEIVED");
         publishWarehouseEvent(payload, "item.preparing", "Warehouse acknowledged shipment request", correlationId);
         return ack("REQUEST_RECEIVED");
