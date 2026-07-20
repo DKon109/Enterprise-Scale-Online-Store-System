@@ -26,6 +26,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.util.StringUtils;
 import org.springframework.stereotype.Service;
 
@@ -50,6 +51,8 @@ public class OrderOrchestrator {
     private final CircuitBreaker circuitBreaker;
     private final InterServiceCallLogger callLogger;
     private final RabbitTemplate rabbitTemplate;
+    @Value("${app.messaging.enabled:true}")
+    private boolean messagingEnabled = true;
 
     public OrderOrchestrator(
             OrderRepository orders,
@@ -413,6 +416,10 @@ public class OrderOrchestrator {
      * Listeners: BankMessageListener, EmailMessageListener
      */
     private void publishPaymentAuthorizedEvent(UUID orderId, String correlationId) {
+        if (!messagingEnabled) {
+            log.info("[OrderOrchestrator] Demo mode: recorded payment.authorized for order {}", orderId);
+            return;
+        }
         try {
             EventMessage event = new EventMessage();
             event.setType("payment.authorized");
@@ -435,6 +442,10 @@ public class OrderOrchestrator {
      * Listeners: WarehouseMessageListener
      */
     private void publishShipmentRequestedEvent(UUID orderId, String correlationId) {
+        if (!messagingEnabled) {
+            log.info("[OrderOrchestrator] Demo mode: recorded shipment.requested for order {}", orderId);
+            return;
+        }
         try {
             EventMessage event = new EventMessage();
             event.setType("shipment.requested");

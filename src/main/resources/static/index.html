@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Haven is a resilient, distributed online store demonstration built with Spring Boot.">
+  <meta name="theme-color" content="#16352f">
+  <title>Haven — Useful goods, delivered thoughtfully</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#catalog">Skip to products</a>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Haven home"><span class="brand-mark">H</span><span>HAVEN</span></a>
+    <nav aria-label="Primary navigation">
+      <a href="#catalog">Shop</a><a href="#how-it-works">How it works</a><a href="#architecture">Reliability</a>
+    </nav>
+    <button class="account-button" id="accountButton"><span class="status-dot"></span><span id="accountLabel">Sign in</span></button>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Everyday objects · Australia-wide</p>
+        <h1>Good things,<br><em>thoughtfully</em> delivered.</h1>
+        <p class="hero-lede">A small collection of useful, well-made goods backed by a resilient distributed fulfilment system.</p>
+        <div class="hero-actions"><a class="button primary" href="#catalog">Explore the collection</a><button class="text-button" id="demoLogin">Use demo account <span>→</span></button></div>
+        <div class="trust-row"><span>✓ Secure checkout</span><span>✓ Multi-warehouse stock</span><span>✓ Live order tracking</span></div>
+      </div>
+      <div class="hero-visual" aria-label="Curated collection illustration">
+        <div class="orb orb-one"></div><div class="orb orb-two"></div>
+        <div class="product-stage">
+          <div class="stage-label"><span>Field notes</span><strong>Edition 01</strong></div>
+          <div class="mug"><span></span></div>
+          <div class="notebook"><i></i><b>HAVEN<br>FIELD<br>NOTES</b></div>
+          <div class="leaf leaf-a"></div><div class="leaf leaf-b"></div>
+        </div>
+        <p class="visual-caption">Objects for slower mornings<br>and longer weekends.</p>
+      </div>
+    </section>
+
+    <section class="catalog-section" id="catalog">
+      <div class="section-heading">
+        <div><p class="eyebrow">The collection</p><h2>Made for daily rituals.</h2></div>
+        <label class="search"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" placeholder="Search products" aria-label="Search products"></label>
+      </div>
+      <div class="catalog-grid" id="productGrid" aria-live="polite">
+        <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+      </div>
+    </section>
+
+    <section class="process" id="how-it-works">
+      <div><p class="eyebrow light">From click to doorstep</p><h2>One order.<br>Many systems,<br>working as one.</h2></div>
+      <ol>
+        <li><span>01</span><div><h3>Stock is secured</h3><p>Inventory is reserved across one or more warehouses, atomically.</p></div></li>
+        <li><span>02</span><div><h3>Payment is protected</h3><p>Idempotent payment handling prevents accidental duplicate charges.</p></div></li>
+        <li><span>03</span><div><h3>Delivery stays visible</h3><p>Track each fulfilment stage from pickup through to your door.</p></div></li>
+      </ol>
+    </section>
+
+    <section class="architecture" id="architecture">
+      <p class="eyebrow">Designed for resilience</p><h2>The quiet machinery behind every order.</h2>
+      <div class="architecture-grid">
+        <article><span>↻</span><h3>Automatic retries</h3><p>Temporary service failures are retried with controlled backoff.</p></article>
+        <article><span>⌁</span><h3>Circuit breaking</h3><p>Failing dependencies are isolated before they affect the whole store.</p></article>
+        <article><span>◇</span><h3>Reliable events</h3><p>An outbox keeps critical notifications safe until processing succeeds.</p></article>
+      </div>
+    </section>
+  </main>
+
+  <aside class="drawer" id="orderDrawer" aria-hidden="true" aria-labelledby="drawerTitle">
+    <div class="drawer-head"><div><p class="eyebrow">Your account</p><h2 id="drawerTitle">Orders</h2></div><button class="icon-button" id="closeDrawer" aria-label="Close orders">×</button></div>
+    <div id="accountSummary"></div><div class="orders-list" id="ordersList"></div>
+    <button class="button secondary full" id="logoutButton">Sign out</button>
+  </aside><div class="backdrop" id="backdrop"></div>
+
+  <dialog id="loginDialog">
+    <button class="dialog-close" id="closeLogin" aria-label="Close sign in">×</button>
+    <p class="eyebrow">Welcome back</p><h2>Sign in to continue.</h2><p class="dialog-copy">Use the assignment demo account or your own registered account.</p>
+    <form id="loginForm">
+      <label>Username<input name="username" autocomplete="username" required value="customer"></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" required value="COMP5348"></label>
+      <p class="form-error" id="loginError" role="alert"></p><button class="button primary full" type="submit">Sign in securely</button>
+    </form>
+    <div class="demo-hint"><span>Demo credentials</span><code>customer / COMP5348</code></div>
+  </dialog>
+
+  <dialog id="checkoutDialog" class="checkout-dialog">
+    <button class="dialog-close" id="closeCheckout" aria-label="Close checkout">×</button><div id="checkoutContent"></div>
+  </dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <footer><a class="brand inverse" href="#top"><span class="brand-mark">H</span><span>HAVEN</span></a><p>A COMP5348 enterprise systems demonstration.</p><p>Built for learning · No real payments are processed.</p></footer>
+  <script src="/app.js" defer></script>
+</body>
+</html>
