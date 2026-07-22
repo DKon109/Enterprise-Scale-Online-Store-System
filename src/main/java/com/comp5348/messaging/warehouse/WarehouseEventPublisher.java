@@ -7,6 +7,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
@@ -19,6 +20,8 @@ public class WarehouseEventPublisher {
     private static final Logger log = LoggerFactory.getLogger(WarehouseEventPublisher.class);
 
     private final RabbitTemplate rabbitTemplate;
+    @Value("${app.messaging.enabled:true}")
+    private boolean messagingEnabled = true;
 
     public WarehouseEventPublisher(RabbitTemplate rabbitTemplate) {
         this.rabbitTemplate = rabbitTemplate;
@@ -38,6 +41,11 @@ public class WarehouseEventPublisher {
                                       String description,
                                       String correlationId,
                                       String idempotencyKey) {
+        if (!messagingEnabled) {
+            log.info("[WarehousePublisher] Demo mode: recorded {} for order {} without RabbitMQ",
+                    eventType, orderId);
+            return;
+        }
         EventMessage message = new EventMessage();
         message.setType(eventType);
         message.setOrderId(orderId);
@@ -56,4 +64,3 @@ public class WarehouseEventPublisher {
         return value == null || value.isBlank() ? null : value.trim();
     }
 }
-

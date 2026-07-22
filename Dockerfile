@@ -20,6 +20,6 @@ WORKDIR /app
 
 COPY --from=build /home/gradle/app/build/output/app.jar ./app.jar
 
-EXPOSE 8081
+EXPOSE 10000
 
 ENTRYPOINT ["java","-jar","/app/app.jar"]

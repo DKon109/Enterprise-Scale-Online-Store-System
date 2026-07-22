@@ -12,6 +12,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClientException;
@@ -21,6 +22,7 @@ import org.springframework.web.client.RestTemplate;
  * Periodically polls the Outbox table and delivers pending notifications.
  */
 @Component
+@ConditionalOnProperty(name = "app.outbox.enabled", havingValue = "true", matchIfMissing = true)
 public class OutboxWorker {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxWorker.class);

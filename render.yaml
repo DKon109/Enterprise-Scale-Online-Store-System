@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: enterprise-scale-online-store
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: demo
+      - key: JAVA_TOOL_OPTIONS
+        value: -XX:MaxRAMPercentage=70 -XX:+UseSerialGC
+      - key: JWT_SECRET
+        generateValue: true
