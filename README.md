@@ -4,7 +4,8 @@
 [![Source](https://img.shields.io/badge/Source-GitHub-24292f?style=for-the-badge&logo=github)](https://github.com/DKon109/Enterprise-Scale-Online-Store-System)
 [![Java](https://img.shields.io/badge/Java-17-ed8b00?style=flat-square&logo=openjdk)](build.gradle)
 [![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.3.2-6db33f?style=flat-square&logo=springboot)](build.gradle)
-[![Tests](https://img.shields.io/badge/tests-271_passing-2f855a?style=flat-square)](#test-evidence)
+[![CI](https://github.com/DKon109/Enterprise-Scale-Online-Store-System/actions/workflows/ci.yml/badge.svg)](https://github.com/DKon109/Enterprise-Scale-Online-Store-System/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-175_passing-2f855a?style=flat-square)](#test-evidence)
 
 Haven is a portfolio-ready implementation of a distributed online-store workflow. It coordinates stock across multiple warehouses, idempotent payment processing, delivery hand-off, compensation, and reliable customer notification. The project was built for the University of Sydney's COMP5348 Enterprise-Scale Software Development group project.
 
@@ -191,21 +192,21 @@ Notification intent uses a database outbox, but Bank/Warehouse RabbitMQ publicat
 
 ## Test evidence
 
-Latest verification on **23 July 2026**:
+Latest verification on **24 July 2026** (also run on every push by [GitHub Actions CI](https://github.com/DKon109/Enterprise-Scale-Online-Store-System/actions/workflows/ci.yml)):
 
 ```text
 ./gradlew test bootJar --no-daemon
 
-271 tests completed
+175 tests completed
 0 failures
 0 errors
 0 skipped
 BUILD SUCCESSFUL
 ```
 
-The suite spans 39 test classes/XML suites and includes:
+The suite spans 22 test classes and includes:
 
-- 33 documented order-orchestration scenarios: happy path, stock/payment/shipment failures, multi-warehouse allocation, cancellation, idempotency, correlation, outbox, retry, and circuit breaking.
+- 37 order-orchestration tests (across `OrderOrchestratorE2ETest`, `OrderServiceTest`, `OrderServiceIntegrationTest`): happy path, stock/payment/shipment failures, multi-warehouse allocation, cancellation, idempotency, correlation, outbox, retry, and circuit breaking.
 - Controller integration tests for Bank, Delivery, Fulfilment, and Order endpoints.
 - Repository constraint tests, including duplicate payment idempotency keys.
 - Customer, JWT, inventory, domain model, and messaging producer/listener tests.
